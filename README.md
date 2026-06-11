@@ -1,5 +1,9 @@
 # EndPoint Monitor for FreePBX 17
 
+## Development Branch
+
+The `1-1-0_dev` branch is carrying unreleased 1.1.0 development work. History pruning and single-row history deletion are under development here and are not a released 1.1.0 feature yet.
+
 **Development branch warning:** `1-1-0_dev` is not safe to install or test yet. Use the `main` branch for the current stable 1.0.1 release.
 
 ## Current Release
