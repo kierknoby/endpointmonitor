@@ -19,6 +19,30 @@
 		el.text(message).show();
 	}
 
+	function normaliseToken(value) {
+		value = $.trim(String(value || ''));
+		if (value.charAt(0) !== '<') {
+			return value;
+		}
+
+		var input = $(value).filter('input').add($(value).find('input')).filter('[name="token"], [name="csrf_token"], [name="freepbx_token"]').first();
+		return input.length ? $.trim(String(input.val() || '')) : value;
+	}
+
+	function endpointMonitorToken(root) {
+		var scope = root && root.length ? root : $('.endpointmonitor');
+		return normaliseToken(
+			scope.attr('data-csrf-token')
+				|| scope.data('csrf-token')
+				|| $('input[name="token"]').first().val()
+				|| $('input[name="csrf_token"]').first().val()
+				|| $('input[name="freepbx_token"]').first().val()
+				|| ''
+		);
+	}
+
+	window.EndpointMonitorToken = endpointMonitorToken;
+
 	function endpointRows(extension) {
 		return $('.endpointmonitor tr[data-extension]').filter(function () {
 			return String($(this).data('extension')) === String(extension);
@@ -117,7 +141,6 @@
 
 	$(function () {
 		var root = $('.endpointmonitor');
-		var csrfToken = root.data('csrf-token') || '';
 		var refreshInFlight = false;
 		var refreshTimer = null;
 
@@ -134,6 +157,14 @@
 			var row = input.closest('tr');
 			var extension = row.data('extension');
 			var enabled = input.is(':checked') ? 1 : 0;
+			var token = endpointMonitorToken(root);
+
+			if (!token) {
+				input.prop('checked', !enabled);
+				setToggleText(input);
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				return;
+			}
 
 			input.prop('disabled', true);
 			$.ajax({
@@ -144,7 +175,7 @@
 					command: 'setenabled',
 					extension: extension,
 					enabled: enabled,
-					token: csrfToken
+					token: token
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
@@ -165,6 +196,13 @@
 
 		function refreshStatus(isAutomatic) {
 			var button = $('#em-refresh');
+			var token = endpointMonitorToken(root);
+			if (!token) {
+				if (!isAutomatic) {
+					showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				}
+				return;
+			}
 			if (refreshInFlight) {
 				return;
 			}
@@ -179,7 +217,7 @@
 				dataType: 'json',
 				data: {
 					command: isAutomatic ? 'gettopology' : 'refresh',
-					token: csrfToken
+					token: token
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
@@ -238,12 +276,17 @@
 
 		$('#em-save-alerts').on('click', function () {
 			var button = $(this);
+			var token = endpointMonitorToken(root);
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				return;
+			}
 			button.prop('disabled', true);
 			$.ajax({
 				url: 'ajax.php?module=endpointmonitor',
 				method: 'POST',
 				dataType: 'json',
-				data: alertSettingsPayload('savealerts', csrfToken)
+				data: alertSettingsPayload('savealerts', token)
 			}).done(function (response) {
 				if (!response || !response.status) {
 					showMessage(response && response.message ? response.message : 'Unable to save alert settings.', 'error');
@@ -260,6 +303,11 @@
 
 		$('#em-test-email').off('click.endpointmonitor').on('click.endpointmonitor', function () {
 			var button = $(this);
+			var token = endpointMonitorToken(root);
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				return;
+			}
 			button.prop('disabled', true);
 			$.ajax({
 				url: 'ajax.php?module=endpointmonitor',
@@ -267,7 +315,7 @@
 				dataType: 'json',
 				data: {
 					command: 'testemail',
-					token: csrfToken
+					token: token
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
@@ -296,9 +344,14 @@
 			var historyType = control.data('history-type') || '';
 			var policy = String(control.find('.em-prune-policy').val() || 'never').toLowerCase();
 			var confirmed = control.find('.em-prune-confirm').is(':checked') ? 1 : 0;
+			var token = endpointMonitorToken(root);
 
 			if (policy !== 'never' && !confirmed) {
 				showMessage('Confirm permanent deletion before applying pruning.', 'error');
+				return;
+			}
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
 				return;
 			}
 
@@ -312,7 +365,7 @@
 					history_type: historyType,
 					policy: policy,
 					confirmed: confirmed,
-					token: csrfToken
+					token: token
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
@@ -339,7 +392,12 @@
 		$('.endpointmonitor').on('click', '.em-delete-status-history', function () {
 			var button = $(this);
 			var id = parseInt(button.data('history-id'), 10) || 0;
+			var token = endpointMonitorToken(root);
 			if (id <= 0 || !window.confirm('Permanently delete this Status History row?')) {
+				return;
+			}
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
 				return;
 			}
 
@@ -352,7 +410,7 @@
 					command: 'deletestatushistoryrow',
 					id: id,
 					confirmed: 1,
-					token: csrfToken
+					token: token
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
@@ -371,7 +429,12 @@
 		$('.endpointmonitor').on('click', '.em-delete-alert-history', function () {
 			var button = $(this);
 			var id = parseInt(button.data('history-id'), 10) || 0;
+			var token = endpointMonitorToken(root);
 			if (id <= 0 || !window.confirm('Permanently delete this Alert History row?')) {
+				return;
+			}
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
 				return;
 			}
 
@@ -384,7 +447,7 @@
 					command: 'deletealerthistoryrow',
 					id: id,
 					confirmed: 1,
-					token: csrfToken
+					token: token
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
@@ -413,8 +476,8 @@
         var noteRequestIds = {};
 
         function endpointMonitorToken() {
-                if (typeof csrfToken !== 'undefined' && csrfToken) {
-                        return csrfToken;
+                if (window.EndpointMonitorToken) {
+                        return window.EndpointMonitorToken();
                 }
 
                 return $('input[name="token"]').first().val()
@@ -435,6 +498,11 @@
                 }
 
                 if (!extension) {
+                        $status.text('Save failed');
+                        return;
+                }
+
+                if (!endpointMonitorToken()) {
                         $status.text('Save failed');
                         return;
                 }
@@ -498,8 +566,8 @@
         var currentLimit = String($('#em-map-limit').val() || '6').toLowerCase();
 
         function endpointMonitorToken() {
-                if (typeof csrfToken !== 'undefined' && csrfToken) {
-                        return csrfToken;
+                if (window.EndpointMonitorToken) {
+                        return window.EndpointMonitorToken();
                 }
 
                 return $('input[name="token"]').first().val()
@@ -596,13 +664,18 @@
         }
 
         function saveShowLimit(value) {
+                var token = endpointMonitorToken();
+                if (!token) {
+                        return;
+                }
+
                 $.ajax({
                         url: 'ajax.php?module=endpointmonitor&command=saveshowlimit',
                         method: 'POST',
                         dataType: 'json',
                         data: {
                                 show_limit: normaliseLimit(value),
-                                token: endpointMonitorToken()
+                                token: token
                         },
                         timeout: 10000
                 });

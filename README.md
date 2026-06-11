@@ -2,19 +2,13 @@
 
 ## Development Branch
 
-The `1-1-0_dev` branch is carrying unreleased 1.1.0 development work. History pruning and single-row history deletion are under development here and are not a released 1.1.0 feature yet.
+The `1-1-0_dev` branch is carrying unreleased 1.1.0 development work. History pruning, single-row history deletion, and CSRF-safe page-load AJAX handling are under development here and are not released 1.1.0 features yet.
 
 **Development branch warning:** `1-1-0_dev` is not safe to install or test yet. Use the `main` branch for the current stable 1.0.1 release.
 
 ## Current Release
 
 Patch release: 1.0.1, released at 18:45 on 11 June 2026.
-
-## Development Branch
-
-The `1-1-0_dev` branch is carrying unreleased 1.1.0 development work. History
-pruning and single-row history deletion are under development here and are not a
-released 1.1.0 feature yet.
 
 ## Version Update
 
