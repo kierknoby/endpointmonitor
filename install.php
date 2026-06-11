@@ -103,6 +103,8 @@ $defaultSettings = [
 	'repeat_suppression_seconds' => '0',
 	'trusted_vpn_networks' => '',
 	'topology_poll_interval_seconds' => '10',
+	'status_history_prune_policy' => 'never',
+	'alert_history_prune_policy' => 'never',
 ];
 
 foreach ($defaultSettings as $key => $value) {

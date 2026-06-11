@@ -60,6 +60,20 @@
 	margin-top: 16px;
 }
 
+.endpointmonitor .em-prune-control {
+	margin-bottom: 12px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid #eee;
+}
+
+.endpointmonitor .em-prune-control label {
+	margin-right: 6px;
+}
+
+.endpointmonitor .em-prune-confirm-wrap {
+	margin-top: 8px;
+}
+
 .endpointmonitor .em-status-item {
 	margin-bottom: 8px;
 }
@@ -232,4 +246,3 @@
 .em-toast-info {
         background: #31708f;
 }
-

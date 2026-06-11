@@ -6,6 +6,7 @@
  * @var array $endpoints
  * @var array $statusHistory
  * @var array $alertSettings
+ * @var array $pruneSettings
  * @var array $alertHistory
  * @var string $lastRefresh
  * @var string $refreshError
@@ -20,6 +21,7 @@ if (!defined('FREEPBX_IS_AUTH')) {
 $endpoints = isset($endpoints) && is_array($endpoints) ? $endpoints : [];
 $statusHistory = isset($statusHistory) && is_array($statusHistory) ? $statusHistory : [];
 $alertSettings = isset($alertSettings) && is_array($alertSettings) ? $alertSettings : [];
+$pruneSettings = isset($pruneSettings) && is_array($pruneSettings) ? $pruneSettings : [];
 $alertHistory = isset($alertHistory) && is_array($alertHistory) ? $alertHistory : [];
 $mapEndpoints = array_values(array_filter($endpoints, function ($endpoint) {
 	return isset($endpoint['discovered']) && (int)$endpoint['discovered'] === 1;
@@ -27,6 +29,14 @@ $mapEndpoints = array_values(array_filter($endpoints, function ($endpoint) {
 $uiShowLimit = isset($alertSettings['ui_show_limit']) ? strtolower((string)$alertSettings['ui_show_limit']) : '6';
 if (!in_array($uiShowLimit, ['6', '30', '60', '120', 'all'], true)) {
 	$uiShowLimit = '6';
+}
+$statusPrunePolicy = isset($pruneSettings['status_history_prune_policy']) ? strtolower((string)$pruneSettings['status_history_prune_policy']) : 'never';
+$alertPrunePolicy = isset($pruneSettings['alert_history_prune_policy']) ? strtolower((string)$pruneSettings['alert_history_prune_policy']) : 'never';
+if (!in_array($statusPrunePolicy, ['daily', 'monthly', 'yearly', 'never'], true)) {
+	$statusPrunePolicy = 'never';
+}
+if (!in_array($alertPrunePolicy, ['daily', 'monthly', 'yearly', 'never'], true)) {
+	$alertPrunePolicy = 'never';
 }
 $mapDefaultLimit = $uiShowLimit === 'all' ? count($mapEndpoints) : (int)$uiShowLimit;
 $mapVisibleEndpoints = $uiShowLimit === 'all' ? $mapEndpoints : array_slice($mapEndpoints, 0, $mapDefaultLimit);
@@ -275,6 +285,22 @@ $_emAssetVer = max(
 					<h3 class="panel-title"><?php echo _('Status History'); ?></h3>
 				</div>
 				<div class="panel-body">
+					<div class="em-prune-control" data-history-type="status">
+						<div class="form-inline">
+							<label for="em-status-prune-policy"><?php echo _('Prune'); ?></label>
+							<select id="em-status-prune-policy" class="form-control input-sm em-prune-policy">
+								<option value="never" <?php echo $statusPrunePolicy === 'never' ? 'selected' : ''; ?>><?php echo _('Never'); ?></option>
+								<option value="daily" <?php echo $statusPrunePolicy === 'daily' ? 'selected' : ''; ?>><?php echo _('Daily'); ?></option>
+								<option value="monthly" <?php echo $statusPrunePolicy === 'monthly' ? 'selected' : ''; ?>><?php echo _('Monthly'); ?></option>
+								<option value="yearly" <?php echo $statusPrunePolicy === 'yearly' ? 'selected' : ''; ?>><?php echo _('Yearly'); ?></option>
+							</select>
+							<button type="button" class="btn btn-default btn-sm em-apply-prune"><?php echo _('Apply'); ?></button>
+						</div>
+						<label class="checkbox-inline em-prune-confirm-wrap" style="<?php echo $statusPrunePolicy === 'never' ? 'display:none;' : ''; ?>">
+							<input type="checkbox" class="em-prune-confirm">
+							<?php echo _('I understand this will permanently delete older Status History rows.'); ?>
+						</label>
+					</div>
 					<?php if (empty($statusHistory)): ?>
 						<p class="em-placeholder em-history-empty"><?php echo _('No status transitions have been recorded yet.'); ?></p>
 					<?php else: ?>
@@ -291,11 +317,12 @@ $_emAssetVer = max(
 									<th><?php echo _('Source'); ?></th>
 									<th><?php echo _('Reason'); ?></th>
 									<th><?php echo _('Latency'); ?></th>
+									<th><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 							<tbody>
 								<?php foreach ($statusHistory as $entry): ?>
-									<tr>
+									<tr data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>">
 										<td><?php echo htmlspecialchars($entry['created_at'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><code><?php echo htmlspecialchars($entry['extension'], ENT_QUOTES, 'UTF-8'); ?></code></td>
 										<td><?php echo htmlspecialchars($entry['from_state'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
@@ -303,6 +330,11 @@ $_emAssetVer = max(
 										<td><?php echo htmlspecialchars($entry['source'], ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo htmlspecialchars($entry['reason'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo $entry['latency_ms'] !== null && $entry['latency_ms'] !== '' ? htmlspecialchars((string)$entry['latency_ms'], ENT_QUOTES, 'UTF-8') . ' ms' : '-'; ?></td>
+										<td>
+											<button type="button" class="btn btn-xs btn-danger em-delete-status-history" data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>" title="<?php echo _('Delete Status History row'); ?>">
+												<i class="fa fa-trash"></i>
+											</button>
+										</td>
 									</tr>
 								<?php endforeach; ?>
 							</tbody>
@@ -320,6 +352,22 @@ $_emAssetVer = max(
 					<h3 class="panel-title"><?php echo _('Alert History'); ?></h3>
 				</div>
 				<div class="panel-body">
+					<div class="em-prune-control" data-history-type="alert">
+						<div class="form-inline">
+							<label for="em-alert-prune-policy"><?php echo _('Prune'); ?></label>
+							<select id="em-alert-prune-policy" class="form-control input-sm em-prune-policy">
+								<option value="never" <?php echo $alertPrunePolicy === 'never' ? 'selected' : ''; ?>><?php echo _('Never'); ?></option>
+								<option value="daily" <?php echo $alertPrunePolicy === 'daily' ? 'selected' : ''; ?>><?php echo _('Daily'); ?></option>
+								<option value="monthly" <?php echo $alertPrunePolicy === 'monthly' ? 'selected' : ''; ?>><?php echo _('Monthly'); ?></option>
+								<option value="yearly" <?php echo $alertPrunePolicy === 'yearly' ? 'selected' : ''; ?>><?php echo _('Yearly'); ?></option>
+							</select>
+							<button type="button" class="btn btn-default btn-sm em-apply-prune"><?php echo _('Apply'); ?></button>
+						</div>
+						<label class="checkbox-inline em-prune-confirm-wrap" style="<?php echo $alertPrunePolicy === 'never' ? 'display:none;' : ''; ?>">
+							<input type="checkbox" class="em-prune-confirm">
+							<?php echo _('I understand this will permanently delete older Alert History rows.'); ?>
+						</label>
+					</div>
 					<?php if (empty($alertHistory)): ?>
 						<p class="em-placeholder em-alert-history-empty"><?php echo _('No alert attempts have been recorded yet.'); ?></p>
 					<?php else: ?>
@@ -336,11 +384,12 @@ $_emAssetVer = max(
 									<th><?php echo _('Recipient'); ?></th>
 									<th><?php echo _('Result'); ?></th>
 									<th><?php echo _('Error'); ?></th>
+									<th><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 							<tbody>
 								<?php foreach ($alertHistory as $entry): ?>
-									<tr>
+									<tr data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>">
 										<td><?php echo htmlspecialchars($entry['sent_at'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><code><?php echo htmlspecialchars($entry['extension'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></code></td>
 										<td><?php echo htmlspecialchars($entry['alert_type'], ENT_QUOTES, 'UTF-8'); ?></td>
@@ -348,6 +397,11 @@ $_emAssetVer = max(
 										<td><?php echo htmlspecialchars($entry['recipient'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo htmlspecialchars($entry['result'], ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo htmlspecialchars($entry['error'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
+										<td>
+											<button type="button" class="btn btn-xs btn-danger em-delete-alert-history" data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>" title="<?php echo _('Delete Alert History row'); ?>">
+												<i class="fa fa-trash"></i>
+											</button>
+										</td>
 									</tr>
 								<?php endforeach; ?>
 							</tbody>
@@ -361,7 +415,7 @@ $_emAssetVer = max(
 
 <script src="modules/endpointmonitor/assets/js/endpointmonitor.js?v=<?php echo $_emAssetVer; ?>"></script>
 <script>
-	// Endpoint map renderer. Auto-refresh uses the main refresh AJAX path in endpointmonitor.js.
+	// Endpoint map renderer. Auto-refresh uses the read-only topology AJAX path in endpointmonitor.js.
 	(function() {
 		const textNoEndpoints = <?php echo json_encode(_('No endpoints discovered.')); ?>;
 		const textSourceIp = <?php echo json_encode(_('Source IP')); ?>;

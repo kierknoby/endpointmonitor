@@ -32,6 +32,8 @@ class Endpointmonitor implements \BMO {
 		'repeat_suppression_seconds' => '0',
 		'trusted_vpn_networks' => '',
 		'topology_poll_interval_seconds' => '10',
+		'status_history_prune_policy' => 'never',
+		'alert_history_prune_policy' => 'never',
 	];
 
 	/** @var \FreePBX */
@@ -192,6 +194,7 @@ class Endpointmonitor implements \BMO {
 			'endpoints' => $data['endpoints'],
 			'statusHistory' => $data['statusHistory'],
 			'alertSettings' => $data['alertSettings'],
+			'pruneSettings' => $this->getPruneSettings(),
 			'alertHistory' => $data['alertHistory'],
 			'lastRefresh' => $data['lastRefresh'],
 			'refreshError' => $data['refreshError'],
@@ -211,6 +214,9 @@ class Endpointmonitor implements \BMO {
 			case 'savetopology':
 			case 'testemail':
 			case 'gettopology':
+			case 'saveprunepolicy':
+			case 'deletestatushistoryrow':
+			case 'deletealerthistoryrow':
 				return true;
 		}
 
@@ -245,6 +251,12 @@ class Endpointmonitor implements \BMO {
 				return $this->handleTestEmail();
 			case 'gettopology':
 				return $this->handleGetTopology();
+			case 'saveprunepolicy':
+				return $this->handleSavePrunePolicy();
+			case 'deletestatushistoryrow':
+				return $this->handleDeleteStatusHistoryRow();
+			case 'deletealerthistoryrow':
+				return $this->handleDeleteAlertHistoryRow();
 		}
 
 		return ['status' => false, 'message' => _('Unknown command')];
@@ -486,6 +498,102 @@ class Endpointmonitor implements \BMO {
 			];
 		}
 	}
+
+	private function handleSavePrunePolicy(): array {
+		try {
+			$historyType = isset($_REQUEST['history_type']) ? strtolower(trim((string)$_REQUEST['history_type'])) : '';
+			$policy = $this->normalisePrunePolicy(isset($_REQUEST['policy']) ? (string)$_REQUEST['policy'] : 'never');
+			$confirmed = !empty($_REQUEST['confirmed']);
+
+			if (!in_array($historyType, ['status', 'alert'], true)) {
+				return ['status' => false, 'message' => _('Unknown history table.')];
+			}
+
+			if ($policy !== 'never' && !$confirmed) {
+				return ['status' => false, 'message' => _('Confirm permanent deletion before applying pruning.')];
+			}
+
+			$settingKey = $historyType === 'status' ? 'status_history_prune_policy' : 'alert_history_prune_policy';
+			$this->setSetting($settingKey, $policy);
+
+			$deleted = 0;
+			if ($policy !== 'never') {
+				$result = $this->applyHistoryPruning($historyType, $policy);
+				$deleted = $result[$historyType] ?? 0;
+			}
+
+			$message = $policy === 'never'
+				? _('History pruning disabled. No rows were deleted.')
+				: sprintf(_('History pruning policy saved. Permanently deleted %d older row(s).'), $deleted);
+
+			$response = [
+				'status' => true,
+				'message' => $message,
+				'history_type' => $historyType,
+				'policy' => $policy,
+				'deleted' => $deleted,
+				'pruneSettings' => $this->getPruneSettings(),
+			];
+
+			if ($historyType === 'status') {
+				$response['statusHistory'] = $this->getStatusHistory();
+			} else {
+				$response['alertHistory'] = $this->getAlertHistory();
+			}
+
+			return $response;
+		} catch (\Exception $e) {
+			$this->logError('History pruning failed: ' . $e->getMessage());
+			return ['status' => false, 'message' => _('Unable to update history pruning. Please check the system logs.')];
+		}
+	}
+
+	private function handleDeleteStatusHistoryRow(): array {
+		try {
+			$id = $this->positiveRequestId('id');
+			if ($id <= 0 || empty($_REQUEST['confirmed'])) {
+				return ['status' => false, 'message' => _('Confirm the selected Status History row deletion.')];
+			}
+
+			$stmt = $this->db()->prepare('DELETE FROM endpointmonitor_status_history WHERE id = :id LIMIT 1');
+			$stmt->execute([':id' => $id]);
+			$deleted = $stmt->rowCount();
+
+			return [
+				'status' => true,
+				'message' => $deleted > 0 ? _('Status History row permanently deleted.') : _('Status History row was not found.'),
+				'deleted' => $deleted,
+				'statusHistory' => $this->getStatusHistory(),
+			];
+		} catch (\Exception $e) {
+			$this->logError('Status History row delete failed: ' . $e->getMessage());
+			return ['status' => false, 'message' => _('Unable to delete Status History row. Please check the system logs.')];
+		}
+	}
+
+	private function handleDeleteAlertHistoryRow(): array {
+		try {
+			$id = $this->positiveRequestId('id');
+			if ($id <= 0 || empty($_REQUEST['confirmed'])) {
+				return ['status' => false, 'message' => _('Confirm the selected Alert History row deletion.')];
+			}
+
+			$stmt = $this->db()->prepare('DELETE FROM endpointmonitor_alert_history WHERE id = :id LIMIT 1');
+			$stmt->execute([':id' => $id]);
+			$deleted = $stmt->rowCount();
+
+			return [
+				'status' => true,
+				'message' => $deleted > 0 ? _('Alert History row permanently deleted.') : _('Alert History row was not found.'),
+				'deleted' => $deleted,
+				'alertHistory' => $this->getAlertHistory(),
+			];
+		} catch (\Exception $e) {
+			$this->logError('Alert History row delete failed: ' . $e->getMessage());
+			return ['status' => false, 'message' => _('Unable to delete Alert History row. Please check the system logs.')];
+		}
+	}
+
 	private function getPageData(bool $refreshStatus): array {
 		$this->syncDiscoveredEndpoints();
 
@@ -1415,7 +1523,7 @@ class Endpointmonitor implements \BMO {
 
 	private function getStatusHistory(): array {
 		$stmt = $this->db()->query(
-			'SELECT extension, from_state, to_state, source, reason, contact_uri, latency_ms, created_at
+			'SELECT id, extension, from_state, to_state, source, reason, contact_uri, latency_ms, created_at
 			FROM endpointmonitor_status_history
 			ORDER BY created_at DESC, id DESC
 			LIMIT 25'
@@ -1432,13 +1540,111 @@ class Endpointmonitor implements \BMO {
 
 	private function getAlertHistory(): array {
 		$stmt = $this->db()->query(
-			'SELECT extension, history_id, alert_type, status, recipient, subject, sent_at, result, error
+			'SELECT id, extension, history_id, alert_type, status, recipient, subject, sent_at, result, error
 			FROM endpointmonitor_alert_history
 			ORDER BY sent_at DESC, id DESC
 			LIMIT 25'
 		);
 
 		return $stmt ? $stmt->fetchAll(\PDO::FETCH_ASSOC) : [];
+	}
+
+	private function getPruneSettings(): array {
+		$settings = $this->getAlertSettings();
+
+		return [
+			'status_history_prune_policy' => $this->normalisePrunePolicy($settings['status_history_prune_policy'] ?? 'never'),
+			'alert_history_prune_policy' => $this->normalisePrunePolicy($settings['alert_history_prune_policy'] ?? 'never'),
+		];
+	}
+
+	private function normalisePrunePolicy(string $policy): string {
+		$policy = strtolower(trim($policy));
+		return in_array($policy, ['daily', 'monthly', 'yearly', 'never'], true) ? $policy : 'never';
+	}
+
+	private function applyHistoryPruning(?string $historyType = null, ?string $policy = null): array {
+		$deleted = [
+			'status' => 0,
+			'alert' => 0,
+		];
+
+		if ($historyType !== null) {
+			if ($historyType === 'status') {
+				$deleted['status'] = $this->pruneStatusHistory($this->normalisePrunePolicy((string)$policy));
+			} elseif ($historyType === 'alert') {
+				$deleted['alert'] = $this->pruneAlertHistory($this->normalisePrunePolicy((string)$policy));
+			}
+
+			return $deleted;
+		}
+
+		$settings = $this->getPruneSettings();
+		$deleted['status'] = $this->pruneStatusHistory($settings['status_history_prune_policy']);
+		$deleted['alert'] = $this->pruneAlertHistory($settings['alert_history_prune_policy']);
+
+		return $deleted;
+	}
+
+	private function pruneStatusHistory(string $policy): int {
+		$cutoff = $this->pruneCutoff($policy);
+		if ($cutoff === null) {
+			return 0;
+		}
+
+		$stmt = $this->db()->prepare('DELETE FROM endpointmonitor_status_history WHERE created_at < :cutoff');
+		$stmt->execute([':cutoff' => $cutoff]);
+		return $stmt->rowCount();
+	}
+
+	private function pruneAlertHistory(string $policy): int {
+		$cutoff = $this->pruneCutoff($policy);
+		if ($cutoff === null) {
+			return 0;
+		}
+
+		$stmt = $this->db()->prepare('DELETE FROM endpointmonitor_alert_history WHERE sent_at < :cutoff');
+		$stmt->execute([':cutoff' => $cutoff]);
+		return $stmt->rowCount();
+	}
+
+	private function pruneCutoff(string $policy): ?string {
+		$policy = $this->normalisePrunePolicy($policy);
+		if ($policy === 'never') {
+			return null;
+		}
+
+		try {
+			$cutoff = new \DateTimeImmutable($this->now());
+			switch ($policy) {
+				case 'daily':
+					$cutoff = $cutoff->modify('-1 day');
+					break;
+				case 'monthly':
+					$cutoff = $cutoff->modify('-1 month');
+					break;
+				case 'yearly':
+					$cutoff = $cutoff->modify('-1 year');
+					break;
+				default:
+					return null;
+			}
+		} catch (\Exception $e) {
+			$this->logError('Unable to calculate history pruning cutoff: ' . $e->getMessage());
+			return null;
+		}
+
+		return $cutoff->format('Y-m-d H:i:s');
+	}
+
+	private function positiveRequestId(string $key): int {
+		$value = isset($_REQUEST[$key]) ? (string)$_REQUEST[$key] : '';
+		if (!ctype_digit($value)) {
+			return 0;
+		}
+
+		$id = (int)$value;
+		return $id > 0 ? $id : 0;
 	}
 
 	private function getAlertSettings(): array {
@@ -1771,6 +1977,7 @@ class Endpointmonitor implements \BMO {
 	public function runBackgroundMonitor($output = null): bool {
 		try {
 			$settings = $this->getAlertSettings();
+			$this->applyHistoryPruning();
 
 			$interval = (int)($settings['topology_poll_interval_seconds'] ?? 10);
 			if ($interval <= 0) {

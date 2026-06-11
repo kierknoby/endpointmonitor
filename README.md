@@ -6,6 +6,12 @@
 
 Patch release: 1.0.1, released at 18:45 on 11 June 2026.
 
+## Development Branch
+
+The `1-1-0_dev` branch is carrying unreleased 1.1.0 development work. History
+pruning and single-row history deletion are under development here and are not a
+released 1.1.0 feature yet.
+
 ## Version Update
 
 From 1.0.0 to 1.0.1 on 11th June 2026 by kierknoby
@@ -209,9 +215,10 @@ fwconsole job --run=<job_id> --force
 * AJAX commands use a fixed command allowlist.
 * Current AJAX commands are `refresh`, `setenabled`, `savenotes`,
   `saveshowlimit`, `savealerts`, `savetopology`, `testemail`, and
-  `gettopology`.
+  `gettopology`. The 1.1.0 development branch also includes fixed prune/delete
+  commands for Status History and Alert History.
 * AJAX handlers require a FreePBX CSRF token.
-* SQL writes use prepared statements.
+* SQL writes and history deletes use prepared statements.
 * Asterisk access is read-only in this phase.
 * No shell execution is used by the module.
 * Email is sent only through FreePBX mail support.
@@ -244,12 +251,15 @@ Backup/restore:
   operational records during restore.
 * Status and alert history are volatile audit-trail records and should not be
   carried forward on restore by default.
-* History export and long-term retention can be added later if needed.
+* History export can be added later if needed.
 
 Admin UI:
 
 * Monitored endpoints can have short admin notes of up to 48 characters, saved inline with a timestamp.
 * Show selection is saved as a module setting and applies to the map and history tables.
+* History pruning policies default to Never. Daily, Monthly, and Yearly pruning,
+  plus single-row history deletion, permanently delete matching history rows
+  after explicit administrator confirmation.
 * Endpoint Status Map shows a limited tile view by default, with Show options for
   6, 30, 60, 120, and All.
 * Endpoint detail displays source IP, source port, device, version, contact
@@ -378,7 +388,10 @@ Indexes:
 * `to_state`
 * `source`
 
-`endpointmonitor_settings` stores simple key/value alert settings.
+`endpointmonitor_settings` stores simple key/value settings, including alert
+configuration, UI Show limits, and history prune policies. The 1.1.0
+development prune settings are `status_history_prune_policy` and
+`alert_history_prune_policy`, and both default to `never`.
 
 `endpointmonitor_alert_history` stores one row per recipient and alert decision:
 
@@ -438,7 +451,7 @@ permanent architecture decision.
   stable.
 * Add maintenance windows.
 * Add optional webhooks/SMS later.
-* Consider history export and retention controls.
+* Consider history export controls.
 * Consider structured data sources to reduce CLI parser dependency.
 
 ## AI Disclosure
