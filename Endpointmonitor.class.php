@@ -443,7 +443,7 @@ class Endpointmonitor implements \BMO {
 		$failed = 0;
 		foreach ($recipients as $recipient) {
 			$subject = _('EndPoint Monitor: test email');
-			$message = "EndPoint Monitor test email\n\nTime: " . $now . "\nSource: manual test\n\nNote: a successful result means the local FreePBX mailer accepted the message; it does not confirm recipient delivery.\n";
+			$message = "EndPoint Monitor test email\n\nTime: " . $now . "\nSource: manual test\n\nPlease note: Email \"From:\" Address has been configured in Advanced Settings.\n";
 			$result = $this->sendEmail($recipient, $subject, $message);
 			if ($result['status']) {
 				$sent++;

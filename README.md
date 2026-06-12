@@ -354,6 +354,8 @@ Email sending uses FreePBX/CodeIgniter mail support. The module attempts to use
 the configured FreePBX notification sender. If no usable sender is available,
 the alert attempt should fail safely and record the error rather than guessing a
 sender domain.
+The FreePBX Advanced Settings Email "From:" Address should be configured before
+using alert emails or Test Email.
 
 A successful local mailer handoff means the message was accepted by the local
 mailer. It does not guarantee external delivery. Final delivery still depends on
