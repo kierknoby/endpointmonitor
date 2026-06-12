@@ -1844,7 +1844,7 @@ class Endpointmonitor implements \BMO {
 			'Time: ' . $transition['created_at'],
 			'Source: Asterisk',
 			'',
-			'Please note: email delivery can be delayed.',
+			'Please note: email deliveries can be delayed.',
 			'Check current status in the FreePBX module.',
 		];
 
