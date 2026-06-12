@@ -20,6 +20,7 @@ class Endpointmonitor implements \BMO {
 	const STATUS_REGISTERED_NO_QUALIFY = 'Registered (No Qualify)';
 	const STATUS_UNKNOWN = 'Unknown';
 	const STATUS_NOT_REGISTERED = 'Not Registered';
+	const CSRF_SESSION_KEY = 'endpointmonitor_csrf_token';
 
 	private $settingsDefaults = [
 		'alert_enabled' => '0',
@@ -1928,50 +1929,54 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function createCsrfToken(): string {
-		$token = $this->getCodeIgniterCsrfToken();
+		if (!$this->ensureSessionForCsrfWrite()) {
+			return '';
+		}
+
+		$token = isset($_SESSION[self::CSRF_SESSION_KEY]) ? (string)$_SESSION[self::CSRF_SESSION_KEY] : '';
 		if ($token !== '') {
 			return $token;
 		}
 
-		if (method_exists('\FreePBX', 'createToken')) {
-			return (string)\FreePBX::createToken('endpointmonitor');
-		}
-
-		return '';
-	}
-
-	private function getCodeIgniterCsrfToken(): string {
-		if (!function_exists('get_instance')) {
+		try {
+			$token = bin2hex(random_bytes(32));
+			$_SESSION[self::CSRF_SESSION_KEY] = $token;
+			return $token;
+		} catch (\Throwable $e) {
+			$this->logWarning('Unable to create EndPoint Monitor CSRF token: ' . $e->getMessage());
 			return '';
 		}
+	}
 
-		try {
-			$ci = get_instance();
-			if (isset($ci->security) && method_exists($ci->security, 'get_csrf_hash')) {
-				return (string)$ci->security->get_csrf_hash();
-			}
-		} catch (\Throwable $e) {
-			$this->logWarning('Unable to get FreePBX CSRF token: ' . $e->getMessage());
+	private function ensureSessionForCsrfWrite(): bool {
+		if (!function_exists('session_status')) {
+			return isset($_SESSION) && is_array($_SESSION);
 		}
 
-		return '';
+		$status = session_status();
+		if ($status === PHP_SESSION_ACTIVE) {
+			return true;
+		}
+
+		if ($status === PHP_SESSION_DISABLED || headers_sent()) {
+			return false;
+		}
+
+		return @session_start();
 	}
 
 	private function validateCsrfToken(): bool {
-		if (!method_exists('\FreePBX', 'checkToken')) {
+		$sessionToken = isset($_SESSION[self::CSRF_SESSION_KEY]) ? (string)$_SESSION[self::CSRF_SESSION_KEY] : '';
+		if ($sessionToken === '') {
 			return false;
 		}
 
 		$token = isset($_REQUEST['token']) ? (string)$_REQUEST['token'] : '';
-		if ($token === '' && isset($_REQUEST['csrf_token'])) {
-			$token = (string)$_REQUEST['csrf_token'];
-		}
-
 		if ($token === '') {
 			return false;
 		}
 
-		return (bool)\FreePBX::checkToken('endpointmonitor', $token);
+		return hash_equals($sessionToken, $token);
 	}
 
 	private function logError(string $message): void {
