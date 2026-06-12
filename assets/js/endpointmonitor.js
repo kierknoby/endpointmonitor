@@ -19,6 +19,30 @@
 		el.text(message).show();
 	}
 
+	function normaliseToken(value) {
+		value = $.trim(String(value || ''));
+		if (value.charAt(0) !== '<') {
+			return value;
+		}
+
+		var input = $(value).filter('input').add($(value).find('input')).filter('[name="token"], [name="csrf_token"], [name="freepbx_token"]').first();
+		return input.length ? $.trim(String(input.val() || '')) : value;
+	}
+
+	function endpointMonitorToken(root) {
+		var scope = root && root.length ? root : $('.endpointmonitor');
+		return normaliseToken(
+			scope.attr('data-csrf-token')
+				|| scope.data('csrf-token')
+				|| $('input[name="token"]').first().val()
+				|| $('input[name="csrf_token"]').first().val()
+				|| $('input[name="freepbx_token"]').first().val()
+				|| ''
+		);
+	}
+
+	window.EndpointMonitorToken = endpointMonitorToken;
+
 	function endpointRows(extension) {
 		return $('.endpointmonitor tr[data-extension]').filter(function () {
 			return String($(this).data('extension')) === String(extension);
@@ -33,7 +57,8 @@
 	function renderStatusRows(endpoints) {
 		$.each(endpoints || [], function (_, endpoint) {
 			var rows = endpointRows(endpoint.extension);
-			rows.find('.em-status-value').text(endpoint.last_known_status || '-');
+			var status = endpoint.last_known_status || endpoint.status || '-';
+			rows.find('.em-status-value').text(status);
 			rows.find('.em-device-name').text(endpoint.device_name || '-');
 			rows.find('.em-firmware-version').text(endpoint.firmware_version || '-');
 			rows.find('.em-source-ip').text(endpoint.source_ip || '-');
@@ -43,7 +68,7 @@
 			rows.find('.em-last-checked').text(endpoint.last_checked_at || '-');
 			if (endpoint.latency_ms) {
 				rows.find('.em-latency').text(endpoint.latency_ms + ' ms');
-			} else if (endpoint.last_known_status === 'Registered (No Qualify)') {
+			} else if (status === 'Registered (No Qualify)') {
 				rows.find('.em-latency').text('Unavailable; qualify is not enabled.');
 			} else {
 				rows.find('.em-latency').text('-');
@@ -55,8 +80,9 @@
 		var rows = [];
 		$.each(history || [], function (_, entry) {
 			var latency = entry.latency_ms ? escapeHtml(entry.latency_ms) + ' ms' : '-';
+			var id = parseInt(entry.id, 10) || 0;
 			rows.push(
-				'<tr>' +
+				'<tr data-history-id="' + id + '">' +
 					'<td>' + escapeHtml(entry.created_at) + '</td>' +
 					'<td><code>' + escapeHtml(entry.extension) + '</code></td>' +
 					'<td>' + escapeHtml(entry.from_state) + '</td>' +
@@ -64,6 +90,7 @@
 					'<td>' + escapeHtml(entry.source) + '</td>' +
 					'<td>' + escapeHtml(entry.reason) + '</td>' +
 					'<td>' + latency + '</td>' +
+					'<td><button type="button" class="btn btn-xs btn-danger em-delete-status-history" data-history-id="' + id + '" title="Delete Status History row"><i class="fa fa-trash"></i></button></td>' +
 				'</tr>'
 			);
 		});
@@ -71,13 +98,15 @@
 		$('.em-history tbody').html(rows.join(''));
 		$('.em-history-empty').toggle(rows.length === 0);
 		$('.em-history-wrap').toggle(rows.length > 0);
+		$(document).trigger('endpointmonitor:history-rendered');
 	}
 
 	function renderAlertHistoryRows(history) {
 		var rows = [];
 		$.each(history || [], function (_, entry) {
+			var id = parseInt(entry.id, 10) || 0;
 			rows.push(
-				'<tr>' +
+				'<tr data-history-id="' + id + '">' +
 					'<td>' + escapeHtml(entry.sent_at) + '</td>' +
 					'<td><code>' + escapeHtml(entry.extension) + '</code></td>' +
 					'<td>' + escapeHtml(entry.alert_type) + '</td>' +
@@ -85,6 +114,7 @@
 					'<td>' + escapeHtml(entry.recipient) + '</td>' +
 					'<td>' + escapeHtml(entry.result) + '</td>' +
 					'<td>' + escapeHtml(entry.error) + '</td>' +
+					'<td><button type="button" class="btn btn-xs btn-danger em-delete-alert-history" data-history-id="' + id + '" title="Delete Alert History row"><i class="fa fa-trash"></i></button></td>' +
 				'</tr>'
 			);
 		});
@@ -92,6 +122,7 @@
 		$('.em-alert-history tbody').html(rows.join(''));
 		$('.em-alert-history-empty').toggle(rows.length === 0);
 		$('.em-alert-history-wrap').toggle(rows.length > 0);
+		$(document).trigger('endpointmonitor:history-rendered');
 	}
 
 	function alertSettingsPayload(command, csrfToken) {
@@ -110,7 +141,6 @@
 
 	$(function () {
 		var root = $('.endpointmonitor');
-		var csrfToken = root.data('csrf-token') || '';
 		var refreshInFlight = false;
 		var refreshTimer = null;
 
@@ -127,6 +157,14 @@
 			var row = input.closest('tr');
 			var extension = row.data('extension');
 			var enabled = input.is(':checked') ? 1 : 0;
+			var token = endpointMonitorToken(root);
+
+			if (!token) {
+				input.prop('checked', !enabled);
+				setToggleText(input);
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				return;
+			}
 
 			input.prop('disabled', true);
 			$.ajax({
@@ -137,7 +175,7 @@
 					command: 'setenabled',
 					extension: extension,
 					enabled: enabled,
-					token: csrfToken
+					token: token
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
@@ -158,6 +196,13 @@
 
 		function refreshStatus(isAutomatic) {
 			var button = $('#em-refresh');
+			var token = endpointMonitorToken(root);
+			if (!token) {
+				if (!isAutomatic) {
+					showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				}
+				return;
+			}
 			if (refreshInFlight) {
 				return;
 			}
@@ -171,8 +216,8 @@
 				method: 'POST',
 				dataType: 'json',
 				data: {
-					command: 'refresh',
-					token: csrfToken
+					command: isAutomatic ? 'gettopology' : 'refresh',
+					token: token
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
@@ -183,8 +228,12 @@
 				if (window.EndpointMonitorRenderEndpointMap) {
 					window.EndpointMonitorRenderEndpointMap(response.endpoints);
 				}
-				renderHistoryRows(response.statusHistory);
-				renderAlertHistoryRows(response.alertHistory);
+				if (response.statusHistory) {
+					renderHistoryRows(response.statusHistory);
+				}
+				if (response.alertHistory) {
+					renderAlertHistoryRows(response.alertHistory);
+				}
 				if (!isAutomatic) {
 					showMessage(response.message || 'Endpoint status refreshed.', 'success');
 				}
@@ -227,12 +276,17 @@
 
 		$('#em-save-alerts').on('click', function () {
 			var button = $(this);
+			var token = endpointMonitorToken(root);
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				return;
+			}
 			button.prop('disabled', true);
 			$.ajax({
 				url: 'ajax.php?module=endpointmonitor',
 				method: 'POST',
 				dataType: 'json',
-				data: alertSettingsPayload('savealerts', csrfToken)
+				data: alertSettingsPayload('savealerts', token)
 			}).done(function (response) {
 				if (!response || !response.status) {
 					showMessage(response && response.message ? response.message : 'Unable to save alert settings.', 'error');
@@ -249,6 +303,11 @@
 
 		$('#em-test-email').off('click.endpointmonitor').on('click.endpointmonitor', function () {
 			var button = $(this);
+			var token = endpointMonitorToken(root);
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				return;
+			}
 			button.prop('disabled', true);
 			$.ajax({
 				url: 'ajax.php?module=endpointmonitor',
@@ -256,7 +315,7 @@
 				dataType: 'json',
 				data: {
 					command: 'testemail',
-					token: csrfToken
+					token: token
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
@@ -269,6 +328,192 @@
 				showMessage('Unable to send test email.', 'error');
 			}).always(function () {
 				button.prop('disabled', false);
+			});
+		});
+
+		function markPruneApplied(button) {
+			var restoreTimer = button.data('endpointmonitor-prune-restore-timer');
+			if (restoreTimer) {
+				window.clearTimeout(restoreTimer);
+			}
+
+			button.text('✓ Applied');
+			button.data('endpointmonitor-prune-restore-timer', window.setTimeout(function () {
+				updatePruneControlState(button.closest('.em-prune-control'));
+				button.removeData('endpointmonitor-prune-restore-timer');
+			}, 3000));
+		}
+
+		function updatePruneControlState(control, resetConfirmation) {
+			if (resetConfirmation === undefined) {
+				resetConfirmation = true;
+			}
+			var selectedPolicy = String(control.find('.em-prune-policy').val() || 'never').toLowerCase();
+			var activePolicy = String(control.attr('data-active-policy') || 'never').toLowerCase();
+			var isActive = selectedPolicy === activePolicy;
+			var button = control.find('.em-apply-prune');
+
+			button.text(isActive ? 'Active' : 'Apply');
+			button.prop('disabled', isActive);
+			button.toggleClass('disabled', isActive);
+			if (resetConfirmation) {
+				control.find('.em-prune-confirm').prop('checked', false);
+			}
+			control.find('.em-prune-confirm-wrap').toggle(!isActive && selectedPolicy !== 'never');
+		}
+
+		$('.endpointmonitor .em-prune-control').each(function () {
+			updatePruneControlState($(this));
+		});
+
+		root.off('change.endpointmonitorPrune', '.em-prune-policy').on('change.endpointmonitorPrune', '.em-prune-policy', function () {
+			var control = $(this).closest('.em-prune-control');
+			updatePruneControlState(control);
+		});
+
+		root.off('click.endpointmonitorPrune', '.em-apply-prune').on('click.endpointmonitorPrune', '.em-apply-prune', function () {
+			var button = $(this);
+			var control = button.closest('.em-prune-control');
+			var historyType = control.data('history-type') || '';
+			var policy = String(control.find('.em-prune-policy').val() || 'never').toLowerCase();
+			var activePolicy = String(control.attr('data-active-policy') || 'never').toLowerCase();
+			var confirmed = control.find('.em-prune-confirm').is(':checked') ? 1 : 0;
+			var token = endpointMonitorToken(root);
+			var applied = false;
+
+			if (button.data('endpointmonitor-prune-in-flight')) {
+				return;
+			}
+			if (policy === activePolicy) {
+				updatePruneControlState(control);
+				return;
+			}
+			if (policy !== 'never' && !confirmed) {
+				showMessage('Confirm permanent deletion before applying pruning.', 'error');
+				return;
+			}
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				return;
+			}
+
+			button.data('endpointmonitor-prune-in-flight', true).prop('disabled', true);
+			$.ajax({
+				url: 'ajax.php?module=endpointmonitor',
+				method: 'POST',
+				dataType: 'json',
+				data: {
+					command: 'saveprunepolicy',
+					history_type: historyType,
+					policy: policy,
+					confirmed: confirmed,
+					token: token
+				}
+			}).done(function (response) {
+				if (!response || !response.status) {
+					showMessage(response && response.message ? response.message : 'Unable to save pruning policy.', 'error');
+					return;
+				}
+
+				control.find('.em-prune-confirm').prop('checked', false);
+				control.find('.em-prune-confirm-wrap').hide();
+				if (response.statusHistory) {
+					renderHistoryRows(response.statusHistory);
+				}
+				if (response.alertHistory) {
+					renderAlertHistoryRows(response.alertHistory);
+				}
+				control.attr('data-active-policy', policy);
+				applied = true;
+				markPruneApplied(button);
+				showMessage(response.message || 'History pruning policy saved.', 'success');
+			}).fail(function () {
+				showMessage('Unable to save pruning policy.', 'error');
+			}).always(function () {
+				button.removeData('endpointmonitor-prune-in-flight');
+				if (!button.data('endpointmonitor-prune-restore-timer')) {
+					updatePruneControlState(control, applied);
+				}
+			});
+		});
+
+		root.off('click.endpointmonitorDeleteStatusHistory', '.em-delete-status-history').on('click.endpointmonitorDeleteStatusHistory', '.em-delete-status-history', function () {
+			var button = $(this);
+			var id = parseInt(button.data('history-id'), 10) || 0;
+			var token = endpointMonitorToken(root);
+			if (button.data('endpointmonitor-delete-in-flight')) {
+				return;
+			}
+			if (id <= 0 || !window.confirm('Permanently delete this Status History row?')) {
+				return;
+			}
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				return;
+			}
+
+			button.data('endpointmonitor-delete-in-flight', true).prop('disabled', true);
+			$.ajax({
+				url: 'ajax.php?module=endpointmonitor',
+				method: 'POST',
+				dataType: 'json',
+				data: {
+					command: 'deletestatushistoryrow',
+					id: id,
+					confirmed: 1,
+					token: token
+				}
+			}).done(function (response) {
+				if (!response || !response.status) {
+					showMessage(response && response.message ? response.message : 'Unable to delete Status History row.', 'error');
+					return;
+				}
+				renderHistoryRows(response.statusHistory);
+				showMessage(response.message || 'Status History row deleted.', 'success');
+			}).fail(function () {
+				showMessage('Unable to delete Status History row.', 'error');
+			}).always(function () {
+				button.removeData('endpointmonitor-delete-in-flight').prop('disabled', false);
+			});
+		});
+
+		root.off('click.endpointmonitorDeleteAlertHistory', '.em-delete-alert-history').on('click.endpointmonitorDeleteAlertHistory', '.em-delete-alert-history', function () {
+			var button = $(this);
+			var id = parseInt(button.data('history-id'), 10) || 0;
+			var token = endpointMonitorToken(root);
+			if (button.data('endpointmonitor-delete-in-flight')) {
+				return;
+			}
+			if (id <= 0 || !window.confirm('Permanently delete this Alert History row?')) {
+				return;
+			}
+			if (!token) {
+				showMessage('Security token unavailable. Please reload the page and try again.', 'error');
+				return;
+			}
+
+			button.data('endpointmonitor-delete-in-flight', true).prop('disabled', true);
+			$.ajax({
+				url: 'ajax.php?module=endpointmonitor',
+				method: 'POST',
+				dataType: 'json',
+				data: {
+					command: 'deletealerthistoryrow',
+					id: id,
+					confirmed: 1,
+					token: token
+				}
+			}).done(function (response) {
+				if (!response || !response.status) {
+					showMessage(response && response.message ? response.message : 'Unable to delete Alert History row.', 'error');
+					return;
+				}
+				renderAlertHistoryRows(response.alertHistory);
+				showMessage(response.message || 'Alert History row deleted.', 'success');
+			}).fail(function () {
+				showMessage('Unable to delete Alert History row.', 'error');
+			}).always(function () {
+				button.removeData('endpointmonitor-delete-in-flight').prop('disabled', false);
 			});
 		});
 	});
@@ -285,8 +530,8 @@
         var noteRequestIds = {};
 
         function endpointMonitorToken() {
-                if (typeof csrfToken !== 'undefined' && csrfToken) {
-                        return csrfToken;
+                if (window.EndpointMonitorToken) {
+                        return window.EndpointMonitorToken();
                 }
 
                 return $('input[name="token"]').first().val()
@@ -307,6 +552,11 @@
                 }
 
                 if (!extension) {
+                        $status.text('Save failed');
+                        return;
+                }
+
+                if (!endpointMonitorToken()) {
                         $status.text('Save failed');
                         return;
                 }
@@ -370,8 +620,8 @@
         var currentLimit = String($('#em-map-limit').val() || '6').toLowerCase();
 
         function endpointMonitorToken() {
-                if (typeof csrfToken !== 'undefined' && csrfToken) {
-                        return csrfToken;
+                if (window.EndpointMonitorToken) {
+                        return window.EndpointMonitorToken();
                 }
 
                 return $('input[name="token"]').first().val()
@@ -410,11 +660,11 @@
                 return found;
         }
 
-        function installTableControls() {
-                [
-                        ['monitored', 'Monitored Endpoints'],
-                        ['status-history', 'Status History'],
-                        ['alert-history', 'Alert History']
+	        function installTableControls() {
+	                [
+	                        ['monitored', 'Monitored Endpoints'],
+	                        ['status-history', 'Status History'],
+	                        ['alert-history', 'Alert History']
                 ].forEach(function(item) {
                         var section = item[0];
                         var title = item[1];
@@ -425,13 +675,19 @@
                         }
 
                         var $table = $panel.find('table').first();
-                        if (!$table.length) {
-                                return;
-                        }
+	                        if (!$table.length) {
+	                                return;
+	                        }
 
-                        $table.before(controlHtml(section));
-                });
-        }
+	                        var $control = $(controlHtml(section));
+	                        var $slot = $panel.find('.em-history-show-slot[data-show-section="' + section + '"]').first();
+	                        if ($slot.length) {
+	                                $slot.empty().append($control);
+	                        } else {
+	                                $table.before($control);
+	                        }
+	                });
+	        }
 
         function syncControls(value) {
                 currentLimit = normaliseLimit(value);
@@ -468,13 +724,18 @@
         }
 
         function saveShowLimit(value) {
+                var token = endpointMonitorToken();
+                if (!token) {
+                        return;
+                }
+
                 $.ajax({
                         url: 'ajax.php?module=endpointmonitor&command=saveshowlimit',
                         method: 'POST',
                         dataType: 'json',
                         data: {
                                 show_limit: normaliseLimit(value),
-                                token: endpointMonitorToken()
+                                token: token
                         },
                         timeout: 10000
                 });
@@ -497,6 +758,12 @@
                 syncControls(value);
                 applyAllLimits(this.id !== 'em-map-limit');
                 saveShowLimit(value);
+        });
+
+        $(document).on('endpointmonitor:history-rendered', function() {
+                installTableControls();
+                syncControls(currentLimit);
+                applyAllLimits(false);
         });
 })(window.jQuery);
 

@@ -2,11 +2,15 @@
 
 ## Current Release
 
-Patch release: 1.0.1, released at 18:45 on 11 June 2026.
+Minor release: 1.1.0, released at 21:00 on 12 June 2026.
 
 ## Version Update
 
-From 1.0.0 to 1.0.1 on 11th June 2026 by kierknoby
+Minor release from 1.0.1 to 1.1.0 on 12 June 2026 by kierknoby
+
+Adds configurable Status History and Alert History pruning with Never, Hourly, Daily, Monthly, and Yearly policies, adds confirmed single-row history deletion, makes initial page rendering and endpoint map auto-refresh read-only, adds module-owned session CSRF protection for AJAX, caps alert timing fields to 0-86400 seconds, improves pruning Apply/Active UI, improves responsive history controls, adds friendlier history labels, corrects endpoint address display by deriving Device IP and Device Port from the SIP Contact URI, and removes misleading/noisy Asterisk source details from default endpoint and alert output.
+
+Patch release from 1.0.0 to 1.0.1 on 11 June 2026 by kierknoby
 
 Fixes alert send reservation to prevent duplicate normal alert emails, prevents
 duplicate Test Email click binding, removes duplicate notes autosave handling,
@@ -40,7 +44,7 @@ probe service.
 
 ## Installation
 
-Pick whichever path fits. The module is currently unsigned/unsupported.
+Pick whichever path fits. The module is currently unsigned and community-supported.
 
 ### Option 1: Existing module directory
 
@@ -94,7 +98,7 @@ fwconsole ma list | grep -i endpointmonitor
 Expected output includes the installed version and enabled state, for example:
 
 ```text
-| endpointmonitor     | 1.0.1      | Enabled | GPLv3+      | Unsigned  |
+| endpointmonitor     | 1.1.0      | Enabled | GPLv3+      | Unsigned  |
 ```
 
 You can also check the module file directly:
@@ -206,10 +210,10 @@ fwconsole job --run=<job_id> --force
 
 * AJAX commands use a fixed command allowlist.
 * Current AJAX commands are `refresh`, `setenabled`, `savenotes`,
-  `saveshowlimit`, `savealerts`, `savetopology`, `testemail`, and
-  `gettopology`.
-* AJAX handlers require a FreePBX CSRF token.
-* SQL writes use prepared statements.
+  `saveshowlimit`, `savealerts`, `savetopology`, `testemail`, `gettopology`,
+  `saveprunepolicy`, `deletestatushistoryrow`, and `deletealerthistoryrow`.
+* AJAX handlers require a module-owned session CSRF token.
+* SQL writes and history deletes use prepared statements.
 * Asterisk access is read-only in this phase.
 * No shell execution is used by the module.
 * Email is sent only through FreePBX mail support.
@@ -242,15 +246,18 @@ Backup/restore:
   operational records during restore.
 * Status and alert history are volatile audit-trail records and should not be
   carried forward on restore by default.
-* History export and long-term retention can be added later if needed.
+* History export can be added later if needed.
 
 Admin UI:
 
 * Monitored endpoints can have short admin notes of up to 48 characters, saved inline with a timestamp.
 * Show selection is saved as a module setting and applies to the map and history tables.
+* History pruning policies default to Never. Hourly, Daily, Monthly, and Yearly
+  pruning, plus single-row history deletion, permanently delete matching history
+  rows after explicit administrator confirmation.
 * Endpoint Status Map shows a limited tile view by default, with Show options for
   6, 30, 60, 120, and All.
-* Endpoint detail displays source IP, source port, device, version, contact
+* Endpoint detail displays device IP, device port, device, version, contact
   expiry, qualify frequency, and latency where available.
 * Temporary action messages appear as fading overlay messages so they remain visible on long pages.
 * Warning banners appear where alert configuration cannot support delivery.
@@ -283,8 +290,8 @@ as unknown.
 
 `Removed` is not used as a current state. When an endpoint previously had a
 contact or registered/reachable state and reconciliation finds no contact, the
-current state becomes `Not Registered` and the transition history row uses
-`reason = removed`.
+current state becomes `Not Registered` and the transition reason is shown as
+Contact removed.
 
 ## Status History
 
@@ -294,9 +301,9 @@ The admin page shows the most recent transitions.
 Reconciliation writes history rows with:
 
 * `source = Asterisk`
-* `reason = removed` when a previously contacted/registered endpoint becomes
+* Contact removed when a previously contacted/registered endpoint becomes
   `Not Registered`
-* `reason = status_change` for other state changes
+* Status changed for other state changes
 
 Until AMI ContactStatus ingestion exists, short flaps can still be missed
 between reconciliation runs.
@@ -312,8 +319,8 @@ Defaults:
 * Alert on unreachable enabled
 * Alert on not registered enabled
 * Alert on recovery enabled
-* Debounce seconds: `0`
-* Repeat suppression seconds: `0`
+* Debounce seconds: `0`, maximum `86400`
+* Repeat suppression seconds: `0`, maximum `86400`
 
 Alertable transitions:
 
@@ -344,6 +351,8 @@ Email sending uses FreePBX/CodeIgniter mail support. The module attempts to use
 the configured FreePBX notification sender. If no usable sender is available,
 the alert attempt should fail safely and record the error rather than guessing a
 sender domain.
+The FreePBX Advanced Settings Email "From:" Address should be configured before
+using alert emails or Test Email.
 
 A successful local mailer handoff means the message was accepted by the local
 mailer. It does not guarantee external delivery. Final delivery still depends on
@@ -376,7 +385,11 @@ Indexes:
 * `to_state`
 * `source`
 
-`endpointmonitor_settings` stores simple key/value alert settings.
+`endpointmonitor_settings` stores simple key/value settings, including alert
+configuration, UI Show limits, and history prune policies. The history prune
+settings are `status_history_prune_policy` and `alert_history_prune_policy`,
+both default to `never`, and valid policies are `hourly`, `daily`, `monthly`,
+`yearly`, and `never`.
 
 `endpointmonitor_alert_history` stores one row per recipient and alert decision:
 
@@ -436,7 +449,7 @@ permanent architecture decision.
   stable.
 * Add maintenance windows.
 * Add optional webhooks/SMS later.
-* Consider history export and retention controls.
+* Consider history export controls.
 * Consider structured data sources to reduce CLI parser dependency.
 
 ## AI Disclosure

@@ -6,6 +6,7 @@
  * @var array $endpoints
  * @var array $statusHistory
  * @var array $alertSettings
+ * @var array $pruneSettings
  * @var array $alertHistory
  * @var string $lastRefresh
  * @var string $refreshError
@@ -20,6 +21,7 @@ if (!defined('FREEPBX_IS_AUTH')) {
 $endpoints = isset($endpoints) && is_array($endpoints) ? $endpoints : [];
 $statusHistory = isset($statusHistory) && is_array($statusHistory) ? $statusHistory : [];
 $alertSettings = isset($alertSettings) && is_array($alertSettings) ? $alertSettings : [];
+$pruneSettings = isset($pruneSettings) && is_array($pruneSettings) ? $pruneSettings : [];
 $alertHistory = isset($alertHistory) && is_array($alertHistory) ? $alertHistory : [];
 $mapEndpoints = array_values(array_filter($endpoints, function ($endpoint) {
 	return isset($endpoint['discovered']) && (int)$endpoint['discovered'] === 1;
@@ -27,6 +29,14 @@ $mapEndpoints = array_values(array_filter($endpoints, function ($endpoint) {
 $uiShowLimit = isset($alertSettings['ui_show_limit']) ? strtolower((string)$alertSettings['ui_show_limit']) : '6';
 if (!in_array($uiShowLimit, ['6', '30', '60', '120', 'all'], true)) {
 	$uiShowLimit = '6';
+}
+$statusPrunePolicy = isset($pruneSettings['status_history_prune_policy']) ? strtolower((string)$pruneSettings['status_history_prune_policy']) : 'never';
+$alertPrunePolicy = isset($pruneSettings['alert_history_prune_policy']) ? strtolower((string)$pruneSettings['alert_history_prune_policy']) : 'never';
+if (!in_array($statusPrunePolicy, ['hourly', 'daily', 'monthly', 'yearly', 'never'], true)) {
+	$statusPrunePolicy = 'never';
+}
+if (!in_array($alertPrunePolicy, ['hourly', 'daily', 'monthly', 'yearly', 'never'], true)) {
+	$alertPrunePolicy = 'never';
 }
 $mapDefaultLimit = $uiShowLimit === 'all' ? count($mapEndpoints) : (int)$uiShowLimit;
 $mapVisibleEndpoints = $uiShowLimit === 'all' ? $mapEndpoints : array_slice($mapEndpoints, 0, $mapDefaultLimit);
@@ -67,6 +77,7 @@ $_emAssetVer = max(
 <link rel="stylesheet" href="modules/endpointmonitor/assets/css/endpointmonitor.css?v=<?php echo $_emAssetVer; ?>">
 
 <div class="endpointmonitor" data-csrf-token="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>" data-poll-interval="<?php echo (int)$pollIntervalSeconds; ?>">
+	<input type="hidden" name="token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
 	<div class="row">
 		<div class="col-sm-12">
 			<h1>
@@ -110,7 +121,7 @@ $_emAssetVer = max(
 						</div>
 					<div id="em-topology-container" style="min-height: 200px;">
 						<?php if (empty($mapEndpoints)): ?>
-							<p class="text-muted"><?php echo _('No endpoints discovered.'); ?></p>
+							<p class="text-muted"><?php echo _('No endpoints discovered yet. Use Manual Refresh to discover endpoints.'); ?></p>
 						<?php else: ?>
 							<div class="em-endpoint-map">
 								<?php foreach ($mapVisibleEndpoints as $endpoint): ?>
@@ -121,8 +132,8 @@ $_emAssetVer = max(
 										</div>
 										<div class="em-map-description"><?php echo htmlspecialchars($endpoint['description'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></div>
 										<div class="em-map-status"><?php echo htmlspecialchars($endpoint['last_known_status'] ?: 'Unknown', ENT_QUOTES, 'UTF-8'); ?></div>
-										<div class="em-map-detail"><?php echo _('Source IP'); ?>: <?php echo htmlspecialchars(($endpoint['source_ip'] ?? '') !== '' ? (string)$endpoint['source_ip'] : '-', ENT_QUOTES, 'UTF-8'); ?></div>
-										<div class="em-map-detail"><?php echo _('Source Port'); ?>: <?php echo htmlspecialchars(($endpoint['source_port'] ?? '') !== '' ? (string)$endpoint['source_port'] : '-', ENT_QUOTES, 'UTF-8'); ?></div>
+										<div class="em-map-detail"><?php echo _('Device IP'); ?>: <?php echo htmlspecialchars(($endpoint['device_ip'] ?? '') !== '' ? (string)$endpoint['device_ip'] : '-', ENT_QUOTES, 'UTF-8'); ?></div>
+										<div class="em-map-detail"><?php echo _('Device Port'); ?>: <?php echo htmlspecialchars(($endpoint['device_port'] ?? '') !== '' ? (string)$endpoint['device_port'] : '-', ENT_QUOTES, 'UTF-8'); ?></div>
 										<div class="em-map-detail"><?php echo _('Device'); ?>: <?php echo htmlspecialchars(($endpoint['device_name'] ?? '') !== '' ? (string)$endpoint['device_name'] : '-', ENT_QUOTES, 'UTF-8'); ?></div>
 										<div class="em-map-detail"><?php echo _('Version'); ?>: <?php echo htmlspecialchars(($endpoint['firmware_version'] ?? '') !== '' ? (string)$endpoint['firmware_version'] : '-', ENT_QUOTES, 'UTF-8'); ?></div>
 										<div class="em-map-detail"><?php echo _('Contact expires'); ?>: <?php echo htmlspecialchars(($endpoint['contact_expires_at'] ?? '') !== '' ? (string)$endpoint['contact_expires_at'] : '-', ENT_QUOTES, 'UTF-8'); ?></div>
@@ -155,7 +166,7 @@ $_emAssetVer = max(
 				</div>
 				<div class="panel-body">
 					<?php if (empty($endpoints)): ?>
-						<p class="em-placeholder"><?php echo _('No PJSIP endpoints were discovered.'); ?></p>
+						<p class="em-placeholder"><?php echo _('No PJSIP endpoints are stored yet. Use Manual Refresh to discover endpoints.'); ?></p>
 					<?php else: ?>
 						<div class="table-responsive">
 							<table class="table table-striped table-condensed em-endpoints">
@@ -225,13 +236,13 @@ $_emAssetVer = max(
 							</div>
 							<div class="form-group">
 								<label for="em-debounce-seconds"><?php echo _('Debounce delay (seconds)'); ?></label>
-								<input type="number" id="em-debounce-seconds" class="form-control" min="0" step="1" value="<?php echo htmlspecialchars($alertSettings['debounce_seconds'] ?? '0', ENT_QUOTES, 'UTF-8'); ?>">
-								<p class="help-block"><?php echo _('How long a problem must remain active before an alert is sent. Use 0 to alert immediately.'); ?></p>
+								<input type="number" id="em-debounce-seconds" class="form-control" min="0" max="86400" step="1" value="<?php echo htmlspecialchars($alertSettings['debounce_seconds'] ?? '0', ENT_QUOTES, 'UTF-8'); ?>">
+								<p class="help-block"><?php echo _('How long a problem must remain active before an alert is sent. Use 0 to alert immediately. Maximum 86400 seconds, 24 hours.'); ?></p>
 							</div>
 							<div class="form-group">
 								<label for="em-repeat-suppression-seconds"><?php echo _('Repeat suppression (seconds)'); ?></label>
-								<input type="number" id="em-repeat-suppression-seconds" class="form-control" min="0" step="1" value="<?php echo htmlspecialchars($alertSettings['repeat_suppression_seconds'] ?? '0', ENT_QUOTES, 'UTF-8'); ?>">
-								<p class="help-block"><?php echo _('How long to wait before sending another alert for the same endpoint and alert type. Use 0 to send every eligible alert.'); ?></p>
+								<input type="number" id="em-repeat-suppression-seconds" class="form-control" min="0" max="86400" step="1" value="<?php echo htmlspecialchars($alertSettings['repeat_suppression_seconds'] ?? '0', ENT_QUOTES, 'UTF-8'); ?>">
+								<p class="help-block"><?php echo _('How long to wait before sending another alert for the same endpoint and alert type. Use 0 to send every eligible alert. Maximum 86400 seconds, 24 hours.'); ?></p>
 							</div>
 						</div>
 						<div class="col-sm-6">
@@ -270,16 +281,36 @@ $_emAssetVer = max(
 
 	<div class="row em-section">
 		<div class="col-sm-12">
-			<div class="panel panel-default">
-				<div class="panel-heading">
-					<h3 class="panel-title"><?php echo _('Status History'); ?></h3>
-				</div>
-				<div class="panel-body">
-					<?php if (empty($statusHistory)): ?>
-						<p class="em-placeholder em-history-empty"><?php echo _('No status transitions have been recorded yet.'); ?></p>
-					<?php else: ?>
-						<p class="em-placeholder em-history-empty" style="display:none;"><?php echo _('No status transitions have been recorded yet.'); ?></p>
-					<?php endif; ?>
+				<div class="panel panel-default">
+					<div class="panel-heading">
+						<h3 class="panel-title"><?php echo _('Status History'); ?></h3>
+					</div>
+					<div class="panel-body">
+						<div class="em-history-control-row">
+							<div class="em-prune-control" data-history-type="status" data-active-policy="<?php echo htmlspecialchars($statusPrunePolicy, ENT_QUOTES, 'UTF-8'); ?>">
+								<div class="form-inline em-prune-inline">
+									<label for="em-status-prune-policy"><?php echo _('Prune'); ?></label>
+									<select id="em-status-prune-policy" class="form-control input-sm em-prune-policy">
+										<option value="never" <?php echo $statusPrunePolicy === 'never' ? 'selected' : ''; ?>><?php echo _('Never'); ?></option>
+										<option value="hourly" <?php echo $statusPrunePolicy === 'hourly' ? 'selected' : ''; ?>><?php echo _('Hourly'); ?></option>
+										<option value="daily" <?php echo $statusPrunePolicy === 'daily' ? 'selected' : ''; ?>><?php echo _('Daily'); ?></option>
+										<option value="monthly" <?php echo $statusPrunePolicy === 'monthly' ? 'selected' : ''; ?>><?php echo _('Monthly'); ?></option>
+										<option value="yearly" <?php echo $statusPrunePolicy === 'yearly' ? 'selected' : ''; ?>><?php echo _('Yearly'); ?></option>
+									</select>
+									<button type="button" class="btn btn-default btn-sm em-apply-prune"><?php echo _('Apply'); ?></button>
+								</div>
+								<label class="checkbox-inline em-prune-confirm-wrap" style="display:none;">
+									<input type="checkbox" class="em-prune-confirm">
+									<?php echo _('I understand this will permanently delete older Status History rows.'); ?>
+								</label>
+							</div>
+							<div class="em-history-show-slot" data-show-section="status-history"></div>
+						</div>
+						<?php if (empty($statusHistory)): ?>
+							<p class="em-placeholder em-history-empty"><?php echo _('No status transitions have been recorded yet.'); ?></p>
+						<?php else: ?>
+							<p class="em-placeholder em-history-empty" style="display:none;"><?php echo _('No status transitions have been recorded yet.'); ?></p>
+						<?php endif; ?>
 					<div class="table-responsive em-history-wrap" style="<?php echo empty($statusHistory) ? 'display:none;' : ''; ?>">
 						<table class="table table-striped table-condensed em-history">
 							<thead>
@@ -291,11 +322,12 @@ $_emAssetVer = max(
 									<th><?php echo _('Source'); ?></th>
 									<th><?php echo _('Reason'); ?></th>
 									<th><?php echo _('Latency'); ?></th>
+									<th><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 							<tbody>
 								<?php foreach ($statusHistory as $entry): ?>
-									<tr>
+									<tr data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>">
 										<td><?php echo htmlspecialchars($entry['created_at'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><code><?php echo htmlspecialchars($entry['extension'], ENT_QUOTES, 'UTF-8'); ?></code></td>
 										<td><?php echo htmlspecialchars($entry['from_state'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
@@ -303,6 +335,11 @@ $_emAssetVer = max(
 										<td><?php echo htmlspecialchars($entry['source'], ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo htmlspecialchars($entry['reason'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo $entry['latency_ms'] !== null && $entry['latency_ms'] !== '' ? htmlspecialchars((string)$entry['latency_ms'], ENT_QUOTES, 'UTF-8') . ' ms' : '-'; ?></td>
+										<td>
+											<button type="button" class="btn btn-xs btn-danger em-delete-status-history" data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>" title="<?php echo _('Delete Status History row'); ?>">
+												<i class="fa fa-trash"></i>
+											</button>
+										</td>
 									</tr>
 								<?php endforeach; ?>
 							</tbody>
@@ -315,16 +352,36 @@ $_emAssetVer = max(
 
 	<div class="row em-section">
 		<div class="col-sm-12">
-			<div class="panel panel-default">
-				<div class="panel-heading">
-					<h3 class="panel-title"><?php echo _('Alert History'); ?></h3>
-				</div>
-				<div class="panel-body">
-					<?php if (empty($alertHistory)): ?>
-						<p class="em-placeholder em-alert-history-empty"><?php echo _('No alert attempts have been recorded yet.'); ?></p>
-					<?php else: ?>
-						<p class="em-placeholder em-alert-history-empty" style="display:none;"><?php echo _('No alert attempts have been recorded yet.'); ?></p>
-					<?php endif; ?>
+				<div class="panel panel-default">
+					<div class="panel-heading">
+						<h3 class="panel-title"><?php echo _('Alert History'); ?></h3>
+					</div>
+					<div class="panel-body">
+						<div class="em-history-control-row">
+							<div class="em-prune-control" data-history-type="alert" data-active-policy="<?php echo htmlspecialchars($alertPrunePolicy, ENT_QUOTES, 'UTF-8'); ?>">
+								<div class="form-inline em-prune-inline">
+									<label for="em-alert-prune-policy"><?php echo _('Prune'); ?></label>
+									<select id="em-alert-prune-policy" class="form-control input-sm em-prune-policy">
+										<option value="never" <?php echo $alertPrunePolicy === 'never' ? 'selected' : ''; ?>><?php echo _('Never'); ?></option>
+										<option value="hourly" <?php echo $alertPrunePolicy === 'hourly' ? 'selected' : ''; ?>><?php echo _('Hourly'); ?></option>
+										<option value="daily" <?php echo $alertPrunePolicy === 'daily' ? 'selected' : ''; ?>><?php echo _('Daily'); ?></option>
+										<option value="monthly" <?php echo $alertPrunePolicy === 'monthly' ? 'selected' : ''; ?>><?php echo _('Monthly'); ?></option>
+										<option value="yearly" <?php echo $alertPrunePolicy === 'yearly' ? 'selected' : ''; ?>><?php echo _('Yearly'); ?></option>
+									</select>
+									<button type="button" class="btn btn-default btn-sm em-apply-prune"><?php echo _('Apply'); ?></button>
+								</div>
+								<label class="checkbox-inline em-prune-confirm-wrap" style="display:none;">
+									<input type="checkbox" class="em-prune-confirm">
+									<?php echo _('I understand this will permanently delete older Alert History rows.'); ?>
+								</label>
+							</div>
+							<div class="em-history-show-slot" data-show-section="alert-history"></div>
+						</div>
+						<?php if (empty($alertHistory)): ?>
+							<p class="em-placeholder em-alert-history-empty"><?php echo _('No alert attempts have been recorded yet.'); ?></p>
+						<?php else: ?>
+							<p class="em-placeholder em-alert-history-empty" style="display:none;"><?php echo _('No alert attempts have been recorded yet.'); ?></p>
+						<?php endif; ?>
 					<div class="table-responsive em-alert-history-wrap" style="<?php echo empty($alertHistory) ? 'display:none;' : ''; ?>">
 						<table class="table table-striped table-condensed em-alert-history">
 							<thead>
@@ -336,11 +393,12 @@ $_emAssetVer = max(
 									<th><?php echo _('Recipient'); ?></th>
 									<th><?php echo _('Result'); ?></th>
 									<th><?php echo _('Error'); ?></th>
+									<th><?php echo _('Actions'); ?></th>
 								</tr>
 							</thead>
 							<tbody>
 								<?php foreach ($alertHistory as $entry): ?>
-									<tr>
+									<tr data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>">
 										<td><?php echo htmlspecialchars($entry['sent_at'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><code><?php echo htmlspecialchars($entry['extension'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></code></td>
 										<td><?php echo htmlspecialchars($entry['alert_type'], ENT_QUOTES, 'UTF-8'); ?></td>
@@ -348,6 +406,11 @@ $_emAssetVer = max(
 										<td><?php echo htmlspecialchars($entry['recipient'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo htmlspecialchars($entry['result'], ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo htmlspecialchars($entry['error'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
+										<td>
+											<button type="button" class="btn btn-xs btn-danger em-delete-alert-history" data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>" title="<?php echo _('Delete Alert History row'); ?>">
+												<i class="fa fa-trash"></i>
+											</button>
+										</td>
 									</tr>
 								<?php endforeach; ?>
 							</tbody>
@@ -361,10 +424,11 @@ $_emAssetVer = max(
 
 <script src="modules/endpointmonitor/assets/js/endpointmonitor.js?v=<?php echo $_emAssetVer; ?>"></script>
 <script>
-	// Endpoint map renderer. Auto-refresh uses the main refresh AJAX path in endpointmonitor.js.
+	// Endpoint map renderer. Auto-refresh uses the read-only topology AJAX path in endpointmonitor.js.
 	(function() {
-		const textNoEndpoints = <?php echo json_encode(_('No endpoints discovered.')); ?>;
-		const textSourceIp = <?php echo json_encode(_('Source IP')); ?>;
+		const textNoEndpoints = <?php echo json_encode(_('No endpoints discovered yet. Use Manual Refresh to discover endpoints.')); ?>;
+		const textDeviceIp = <?php echo json_encode(_('Device IP')); ?>;
+		const textDevicePort = <?php echo json_encode(_('Device Port')); ?>;
 		const textLatency = <?php echo json_encode(_('Latency')); ?>;
 		const textNoQualify = <?php echo json_encode(_('Unavailable; qualify is not enabled.')); ?>;
 		let latestMapEndpoints = <?php echo json_encode($mapEndpoints); ?>;
@@ -449,8 +513,8 @@ $_emAssetVer = max(
 				html += '<div class="em-map-title"><span class="em-led ' + statusClass(status) + '"></span><code>' + escapeHtml(endpoint.extension) + '</code></div>';
 				html += '<div class="em-map-description">' + escapeHtml(endpoint.description || '-') + '</div>';
 				html += '<div class="em-map-status">' + escapeHtml(status) + '</div>';
-				html += '<div class="em-map-detail">' + escapeHtml(textSourceIp) + ': ' + escapeHtml(endpoint.source_ip || '-') + '</div>';
-				html += '<div class="em-map-detail">Source Port: ' + escapeHtml(endpoint.source_port || '-') + '</div>';
+				html += '<div class="em-map-detail">' + escapeHtml(textDeviceIp) + ': ' + escapeHtml(endpoint.device_ip || '-') + '</div>';
+				html += '<div class="em-map-detail">' + escapeHtml(textDevicePort) + ': ' + escapeHtml(endpoint.device_port || '-') + '</div>';
 				html += '<div class="em-map-detail">Device: ' + escapeHtml(endpoint.device_name || '-') + '</div>';
 				html += '<div class="em-map-detail">Version: ' + escapeHtml(endpoint.firmware_version || '-') + '</div>';
 				html += '<div class="em-map-detail">Contact expires: ' + escapeHtml(endpoint.contact_expires_at || '-') + '</div>';

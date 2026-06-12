@@ -13,13 +13,15 @@ namespace FreePBX\modules;
 class Endpointmonitor implements \BMO {
 
 	/** Fallback only. Authoritative version lives in module.xml. */
-	const VERSION = '1.0.1';
+	const VERSION = '1.1.0';
 
 	const STATUS_REACHABLE = 'Reachable';
 	const STATUS_UNREACHABLE = 'Unreachable';
 	const STATUS_REGISTERED_NO_QUALIFY = 'Registered (No Qualify)';
 	const STATUS_UNKNOWN = 'Unknown';
 	const STATUS_NOT_REGISTERED = 'Not Registered';
+	const CSRF_SESSION_KEY = 'endpointmonitor_csrf_token';
+	const ALERT_TIMING_MAX_SECONDS = 86400;
 
 	private $settingsDefaults = [
 		'alert_enabled' => '0',
@@ -32,6 +34,8 @@ class Endpointmonitor implements \BMO {
 		'repeat_suppression_seconds' => '0',
 		'trusted_vpn_networks' => '',
 		'topology_poll_interval_seconds' => '10',
+		'status_history_prune_policy' => 'never',
+		'alert_history_prune_policy' => 'never',
 	];
 
 	/** @var \FreePBX */
@@ -192,6 +196,7 @@ class Endpointmonitor implements \BMO {
 			'endpoints' => $data['endpoints'],
 			'statusHistory' => $data['statusHistory'],
 			'alertSettings' => $data['alertSettings'],
+			'pruneSettings' => $this->getPruneSettings(),
 			'alertHistory' => $data['alertHistory'],
 			'lastRefresh' => $data['lastRefresh'],
 			'refreshError' => $data['refreshError'],
@@ -211,6 +216,9 @@ class Endpointmonitor implements \BMO {
 			case 'savetopology':
 			case 'testemail':
 			case 'gettopology':
+			case 'saveprunepolicy':
+			case 'deletestatushistoryrow':
+			case 'deletealerthistoryrow':
 				return true;
 		}
 
@@ -245,6 +253,12 @@ class Endpointmonitor implements \BMO {
 				return $this->handleTestEmail();
 			case 'gettopology':
 				return $this->handleGetTopology();
+			case 'saveprunepolicy':
+				return $this->handleSavePrunePolicy();
+			case 'deletestatushistoryrow':
+				return $this->handleDeleteStatusHistoryRow();
+			case 'deletealerthistoryrow':
+				return $this->handleDeleteAlertHistoryRow();
 		}
 
 		return ['status' => false, 'message' => _('Unknown command')];
@@ -370,6 +384,14 @@ class Endpointmonitor implements \BMO {
 		if ($recipientsRaw !== '' && !$recipients) {
 			return ['status' => false, 'message' => _('Enter at least one valid email recipient.')];
 		}
+		$debounceSeconds = $this->normaliseAlertTimingSeconds('debounce_seconds', $this->settingsDefaults['debounce_seconds']);
+		if ($debounceSeconds === null) {
+			return ['status' => false, 'message' => _('Debounce delay must be a whole number from 0 to 86400 seconds.')];
+		}
+		$repeatSuppressionSeconds = $this->normaliseAlertTimingSeconds('repeat_suppression_seconds', $this->settingsDefaults['repeat_suppression_seconds']);
+		if ($repeatSuppressionSeconds === null) {
+			return ['status' => false, 'message' => _('Repeat suppression must be a whole number from 0 to 86400 seconds.')];
+		}
 
 		$settings = [
 			'alert_enabled' => !empty($_REQUEST['alert_enabled']) ? '1' : '0',
@@ -377,8 +399,8 @@ class Endpointmonitor implements \BMO {
 			'alert_on_unreachable' => !empty($_REQUEST['alert_on_unreachable']) ? '1' : '0',
 			'alert_on_not_registered' => !empty($_REQUEST['alert_on_not_registered']) ? '1' : '0',
 			'alert_on_recovery' => !empty($_REQUEST['alert_on_recovery']) ? '1' : '0',
-			'debounce_seconds' => (string)max(0, (int)($_REQUEST['debounce_seconds'] ?? $this->settingsDefaults['debounce_seconds'])),
-			'repeat_suppression_seconds' => (string)max(0, (int)($_REQUEST['repeat_suppression_seconds'] ?? $this->settingsDefaults['repeat_suppression_seconds'])),
+			'debounce_seconds' => (string)$debounceSeconds,
+			'repeat_suppression_seconds' => (string)$repeatSuppressionSeconds,
 		];
 
 		foreach ($settings as $key => $value) {
@@ -431,7 +453,7 @@ class Endpointmonitor implements \BMO {
 		$failed = 0;
 		foreach ($recipients as $recipient) {
 			$subject = _('EndPoint Monitor: test email');
-			$message = "EndPoint Monitor test email\n\nTime: " . $now . "\nSource: manual test\n\nNote: a successful result means the local FreePBX mailer accepted the message; it does not confirm recipient delivery.\n";
+			$message = "EndPoint Monitor test email\n\nTime: " . $now . "\nSource: manual test\n\nPlease note: Email \"From:\" Address has been configured in Advanced Settings.\n";
 			$result = $this->sendEmail($recipient, $subject, $message);
 			if ($result['status']) {
 				$sent++;
@@ -486,9 +508,103 @@ class Endpointmonitor implements \BMO {
 			];
 		}
 	}
-	private function getPageData(bool $refreshStatus): array {
-		$this->syncDiscoveredEndpoints();
 
+	private function handleSavePrunePolicy(): array {
+		try {
+			$historyType = isset($_REQUEST['history_type']) ? strtolower(trim((string)$_REQUEST['history_type'])) : '';
+			$policy = $this->normalisePrunePolicy(isset($_REQUEST['policy']) ? (string)$_REQUEST['policy'] : 'never');
+			$confirmed = !empty($_REQUEST['confirmed']);
+
+			if (!in_array($historyType, ['status', 'alert'], true)) {
+				return ['status' => false, 'message' => _('Unknown history table.')];
+			}
+
+			if ($policy !== 'never' && !$confirmed) {
+				return ['status' => false, 'message' => _('Confirm permanent deletion before applying pruning.')];
+			}
+
+			$settingKey = $historyType === 'status' ? 'status_history_prune_policy' : 'alert_history_prune_policy';
+			$this->setSetting($settingKey, $policy);
+
+			$deleted = 0;
+			if ($policy !== 'never') {
+				$result = $this->applyHistoryPruning($historyType, $policy);
+				$deleted = $result[$historyType] ?? 0;
+			}
+
+			$message = $policy === 'never'
+				? _('History pruning disabled. No rows were deleted.')
+				: sprintf(_('History pruning policy saved. Permanently deleted %d older row(s).'), $deleted);
+
+			$response = [
+				'status' => true,
+				'message' => $message,
+				'history_type' => $historyType,
+				'policy' => $policy,
+				'deleted' => $deleted,
+				'pruneSettings' => $this->getPruneSettings(),
+			];
+
+			if ($historyType === 'status') {
+				$response['statusHistory'] = $this->getStatusHistory();
+			} else {
+				$response['alertHistory'] = $this->getAlertHistory();
+			}
+
+			return $response;
+		} catch (\Exception $e) {
+			$this->logError('History pruning failed: ' . $e->getMessage());
+			return ['status' => false, 'message' => _('Unable to update history pruning. Please check the system logs.')];
+		}
+	}
+
+	private function handleDeleteStatusHistoryRow(): array {
+		try {
+			$id = $this->positiveRequestId('id');
+			if ($id <= 0 || empty($_REQUEST['confirmed'])) {
+				return ['status' => false, 'message' => _('Confirm the selected Status History row deletion.')];
+			}
+
+			$stmt = $this->db()->prepare('DELETE FROM endpointmonitor_status_history WHERE id = :id LIMIT 1');
+			$stmt->execute([':id' => $id]);
+			$deleted = $stmt->rowCount();
+
+			return [
+				'status' => true,
+				'message' => $deleted > 0 ? _('Status History row permanently deleted.') : _('Status History row was not found.'),
+				'deleted' => $deleted,
+				'statusHistory' => $this->getStatusHistory(),
+			];
+		} catch (\Exception $e) {
+			$this->logError('Status History row delete failed: ' . $e->getMessage());
+			return ['status' => false, 'message' => _('Unable to delete Status History row. Please check the system logs.')];
+		}
+	}
+
+	private function handleDeleteAlertHistoryRow(): array {
+		try {
+			$id = $this->positiveRequestId('id');
+			if ($id <= 0 || empty($_REQUEST['confirmed'])) {
+				return ['status' => false, 'message' => _('Confirm the selected Alert History row deletion.')];
+			}
+
+			$stmt = $this->db()->prepare('DELETE FROM endpointmonitor_alert_history WHERE id = :id LIMIT 1');
+			$stmt->execute([':id' => $id]);
+			$deleted = $stmt->rowCount();
+
+			return [
+				'status' => true,
+				'message' => $deleted > 0 ? _('Alert History row permanently deleted.') : _('Alert History row was not found.'),
+				'deleted' => $deleted,
+				'alertHistory' => $this->getAlertHistory(),
+			];
+		} catch (\Exception $e) {
+			$this->logError('Alert History row delete failed: ' . $e->getMessage());
+			return ['status' => false, 'message' => _('Unable to delete Alert History row. Please check the system logs.')];
+		}
+	}
+
+	private function getPageData(bool $refreshStatus): array {
 		$refreshError = '';
 		if ($refreshStatus) {
 			try {
@@ -864,8 +980,9 @@ class Endpointmonitor implements \BMO {
 			}
 		}
 
-		// Extract source IP from contact URI (e.g., "sip:200@192.168.1.100:5061" -> "192.168.1.100")
-		$sourceIp = $this->extractSourceIpFromContactUri($contactUri);
+		$contactAddress = $this->parseContactUriAddress($contactUri);
+		$contactHost = $contactAddress['host'];
+		$sourceIp = $contactHost !== null && filter_var($contactHost, FILTER_VALIDATE_IP) ? $contactHost : null;
 
 		return [
 			'extension' => $extension,
@@ -878,23 +995,60 @@ class Endpointmonitor implements \BMO {
 		];
 	}
 
-	private function extractSourceIpFromContactUri(?string $contactUri): ?string {
-		if ($contactUri === null || $contactUri === '') {
-			return null;
+	private function parseContactUriAddress(?string $contactUri): array {
+		$result = ['host' => null, 'port' => null];
+		$contactUri = trim((string)$contactUri);
+		if ($contactUri === '') {
+			return $result;
+		}
+		if (preg_match('/\s/', $contactUri)) {
+			return $result;
 		}
 
-		// Parse contact URI to extract IP address
-		// Expected format: sip:user@host:port or sips:user@host:port or similar
-		// We want to extract the host part
-		if (preg_match('/@([^:\/\?\#]+)/', $contactUri, $matches)) {
-			$host = $matches[1];
-			// Check if it's an IP address (IPv4 or IPv6)
-			if (filter_var($host, FILTER_VALIDATE_IP)) {
-				return $host;
+		$contactUri = trim($contactUri, '<>');
+		$atPosition = strrpos($contactUri, '@');
+		$hostPort = $atPosition === false ? $contactUri : substr($contactUri, $atPosition + 1);
+		$hostPort = preg_split('/[;?\#>\s]/', $hostPort, 2)[0] ?? '';
+		$hostPort = trim($hostPort);
+		if ($hostPort === '') {
+			return $result;
+		}
+
+		if (strpos($hostPort, ':') !== false && stripos($hostPort, 'sip:') === 0) {
+			$hostPort = substr($hostPort, strpos($hostPort, ':') + 1);
+		}
+
+		$host = null;
+		$port = null;
+		if (preg_match('/^\[([^\]]+)\](?::([0-9]+))?$/', $hostPort, $matches)) {
+			$host = trim($matches[1]);
+			$port = $matches[2] ?? null;
+		} elseif (substr_count($hostPort, ':') === 1 && preg_match('/^([^:]+):([0-9]+)$/', $hostPort, $matches)) {
+			$host = trim($matches[1]);
+			$port = $matches[2];
+		} elseif (substr_count($hostPort, ':') === 0) {
+			$host = $hostPort;
+		} else {
+			$host = $hostPort;
+		}
+
+		$host = trim((string)$host, " \t\n\r\0\x0B[]");
+		if ($host === '') {
+			return $result;
+		}
+		if (!filter_var($host, FILTER_VALIDATE_IP) && !preg_match('/^[A-Za-z0-9.-]+$/', $host)) {
+			return $result;
+		}
+
+		$result['host'] = $host;
+		if ($port !== null && ctype_digit((string)$port)) {
+			$portNumber = (int)$port;
+			if ($portNumber > 0 && $portNumber <= 65535) {
+				$result['port'] = $portNumber;
 			}
 		}
 
-		return null;
+		return $result;
 	}
 
 	private function isAsteriskStatus(string $value): bool {
@@ -1091,7 +1245,7 @@ class Endpointmonitor implements \BMO {
 		}
 
 		try {
-			$debounceSeconds = max(0, (int)$settings['debounce_seconds']);
+			$debounceSeconds = min(self::ALERT_TIMING_MAX_SECONDS, max(0, (int)$settings['debounce_seconds']));
 			$cutoff = date('Y-m-d H:i:s', strtotime($now) - $debounceSeconds);
 			$stmt = $this->db()->prepare(
 				'SELECT h.id, h.extension, h.from_state, h.to_state, h.source, h.reason, h.contact_uri, h.latency_ms, h.created_at
@@ -1206,7 +1360,7 @@ class Endpointmonitor implements \BMO {
         }
 
 	private function isRepeatSuppressed(array $transition, string $alertType, string $recipient, array $settings, string $now): bool {
-		$seconds = max(0, (int)$settings['repeat_suppression_seconds']);
+		$seconds = min(self::ALERT_TIMING_MAX_SECONDS, max(0, (int)$settings['repeat_suppression_seconds']));
 		if ($seconds === 0) {
 			return false;
 		}
@@ -1376,7 +1530,12 @@ class Endpointmonitor implements \BMO {
 			ORDER BY extension'
 		);
 
-		return $stmt ? $stmt->fetchAll(\PDO::FETCH_ASSOC) : [];
+		$rows = $stmt ? $stmt->fetchAll(\PDO::FETCH_ASSOC) : [];
+		if (!is_array($rows)) {
+			return [];
+		}
+
+		return array_map([$this, 'withEndpointDisplayAddress'], $rows);
 	}
 
 	private function getEndpointMapRows(): array {
@@ -1393,6 +1552,9 @@ class Endpointmonitor implements \BMO {
 				'contact_uri' => $endpoint['contact_uri'],
 				'source_ip' => $endpoint['source_ip'],
 				'source_port' => $endpoint['source_port'] ?? null,
+				'device_ip' => $endpoint['device_ip'] ?? null,
+				'device_port' => $endpoint['device_port'] ?? null,
+				'seen_by_asterisk' => $endpoint['seen_by_asterisk'] ?? null,
 				'user_agent' => $endpoint['user_agent'] ?? null,
 				'device_name' => $endpoint['device_name'] ?? null,
 				'firmware_version' => $endpoint['firmware_version'] ?? null,
@@ -1415,7 +1577,7 @@ class Endpointmonitor implements \BMO {
 
 	private function getStatusHistory(): array {
 		$stmt = $this->db()->query(
-			'SELECT extension, from_state, to_state, source, reason, contact_uri, latency_ms, created_at
+			'SELECT id, extension, from_state, to_state, source, reason, contact_uri, latency_ms, created_at
 			FROM endpointmonitor_status_history
 			ORDER BY created_at DESC, id DESC
 			LIMIT 25'
@@ -1424,6 +1586,7 @@ class Endpointmonitor implements \BMO {
 		$rows = $stmt ? $stmt->fetchAll(\PDO::FETCH_ASSOC) : [];
 		foreach ($rows as &$row) {
 			$row['source'] = $this->sourceLabel($row['source'] ?? '');
+			$row['reason'] = $this->reasonLabel($row['reason'] ?? '');
 		}
 		unset($row);
 
@@ -1432,13 +1595,128 @@ class Endpointmonitor implements \BMO {
 
 	private function getAlertHistory(): array {
 		$stmt = $this->db()->query(
-			'SELECT extension, history_id, alert_type, status, recipient, subject, sent_at, result, error
+			'SELECT id, extension, history_id, alert_type, status, recipient, subject, sent_at, result, error
 			FROM endpointmonitor_alert_history
 			ORDER BY sent_at DESC, id DESC
 			LIMIT 25'
 		);
 
 		return $stmt ? $stmt->fetchAll(\PDO::FETCH_ASSOC) : [];
+	}
+
+	private function getPruneSettings(): array {
+		$settings = $this->getAlertSettings();
+
+		return [
+			'status_history_prune_policy' => $this->normalisePrunePolicy($settings['status_history_prune_policy'] ?? 'never'),
+			'alert_history_prune_policy' => $this->normalisePrunePolicy($settings['alert_history_prune_policy'] ?? 'never'),
+		];
+	}
+
+	private function normalisePrunePolicy(string $policy): string {
+		$policy = strtolower(trim($policy));
+		return in_array($policy, ['hourly', 'daily', 'monthly', 'yearly', 'never'], true) ? $policy : 'never';
+	}
+
+	private function applyHistoryPruning(?string $historyType = null, ?string $policy = null): array {
+		$deleted = [
+			'status' => 0,
+			'alert' => 0,
+		];
+
+		if ($historyType !== null) {
+			if ($historyType === 'status') {
+				$deleted['status'] = $this->pruneStatusHistory($this->normalisePrunePolicy((string)$policy));
+			} elseif ($historyType === 'alert') {
+				$deleted['alert'] = $this->pruneAlertHistory($this->normalisePrunePolicy((string)$policy));
+			}
+
+			return $deleted;
+		}
+
+		$settings = $this->getPruneSettings();
+		$deleted['status'] = $this->pruneStatusHistory($settings['status_history_prune_policy']);
+		$deleted['alert'] = $this->pruneAlertHistory($settings['alert_history_prune_policy']);
+
+		return $deleted;
+	}
+
+	private function pruneStatusHistory(string $policy): int {
+		$cutoff = $this->pruneCutoff($policy);
+		if ($cutoff === null) {
+			return 0;
+		}
+
+		$stmt = $this->db()->prepare('DELETE FROM endpointmonitor_status_history WHERE created_at < :cutoff');
+		$stmt->execute([':cutoff' => $cutoff]);
+		return $stmt->rowCount();
+	}
+
+	private function pruneAlertHistory(string $policy): int {
+		$cutoff = $this->pruneCutoff($policy);
+		if ($cutoff === null) {
+			return 0;
+		}
+
+		$stmt = $this->db()->prepare('DELETE FROM endpointmonitor_alert_history WHERE sent_at < :cutoff');
+		$stmt->execute([':cutoff' => $cutoff]);
+		return $stmt->rowCount();
+	}
+
+	private function pruneCutoff(string $policy): ?string {
+		$policy = $this->normalisePrunePolicy($policy);
+		if ($policy === 'never') {
+			return null;
+		}
+
+		try {
+			$cutoff = new \DateTimeImmutable($this->now());
+			switch ($policy) {
+				case 'hourly':
+					$cutoff = $cutoff->modify('-1 hour');
+					break;
+				case 'daily':
+					$cutoff = $cutoff->modify('-1 day');
+					break;
+				case 'monthly':
+					$cutoff = $cutoff->modify('-1 month');
+					break;
+				case 'yearly':
+					$cutoff = $cutoff->modify('-1 year');
+					break;
+				default:
+					return null;
+			}
+		} catch (\Exception $e) {
+			$this->logError('Unable to calculate history pruning cutoff: ' . $e->getMessage());
+			return null;
+		}
+
+		return $cutoff->format('Y-m-d H:i:s');
+	}
+
+	private function normaliseAlertTimingSeconds(string $key, string $default): ?int {
+		$value = isset($_REQUEST[$key]) ? trim((string)$_REQUEST[$key]) : trim($default);
+		if ($value === '' || !ctype_digit($value)) {
+			return null;
+		}
+
+		$seconds = (int)$value;
+		if ($seconds < 0 || $seconds > self::ALERT_TIMING_MAX_SECONDS) {
+			return null;
+		}
+
+		return $seconds;
+	}
+
+	private function positiveRequestId(string $key): int {
+		$value = isset($_REQUEST[$key]) ? (string)$_REQUEST[$key] : '';
+		if (!ctype_digit($value)) {
+			return 0;
+		}
+
+		$id = (int)$value;
+		return $id > 0 ? $id : 0;
 	}
 
 	private function getAlertSettings(): array {
@@ -1499,7 +1777,35 @@ class Endpointmonitor implements \BMO {
 		$stmt->execute([':extension' => $extension]);
 
 		$row = $stmt->fetch(\PDO::FETCH_ASSOC);
-		return is_array($row) ? $row : [];
+		return is_array($row) ? $this->withEndpointDisplayAddress($row) : [];
+	}
+
+	private function withEndpointDisplayAddress(array $endpoint): array {
+		$contactAddress = $this->parseContactUriAddress($endpoint['contact_uri'] ?? null);
+		$endpoint['device_ip'] = $contactAddress['host'];
+		$endpoint['device_port'] = $contactAddress['port'];
+		$endpoint['seen_by_asterisk'] = $this->formatSeenByAsterisk(
+			$endpoint['source_ip'] ?? null,
+			$endpoint['source_port'] ?? null
+		);
+
+		return $endpoint;
+	}
+
+	private function formatSeenByAsterisk($sourceIp, $sourcePort): ?string {
+		$sourceIp = trim((string)$sourceIp);
+		if ($sourceIp === '') {
+			return null;
+		}
+
+		if ($sourcePort !== null && $sourcePort !== '' && is_numeric($sourcePort)) {
+			$port = (int)$sourcePort;
+			if ($port > 0 && $port <= 65535) {
+				return $sourceIp . ':' . $port;
+			}
+		}
+
+		return $sourceIp;
 	}
 
 	private function buildAlertEmail(array $transition, string $alertType): array {
@@ -1524,21 +1830,21 @@ class Endpointmonitor implements \BMO {
 			'',
 			'Endpoint: ' . $extension,
 			'Current state: ' . $toState,
-			'Reason: ' . (($transition['reason'] ?? '') !== '' ? $transition['reason'] : '-'),
+			'Reason: ' . $this->reasonLabel($transition['reason'] ?? ''),
 			'Latency: ' . $latency,
 			'',
 			'Endpoint details',
 			'Device: ' . ($deviceName !== '' ? $deviceName : 'Unknown'),
 			'Version: ' . ($firmwareVersion !== '' ? $firmwareVersion : 'Unknown'),
-			'Source IP: ' . (($endpointDetails['source_ip'] ?? '') !== '' ? $endpointDetails['source_ip'] : 'Unknown'),
-			'Source Port: ' . (($endpointDetails['source_port'] ?? '') !== '' ? $endpointDetails['source_port'] : 'Unknown'),
+			'Device IP: ' . (($endpointDetails['device_ip'] ?? '') !== '' ? $endpointDetails['device_ip'] : 'Unknown'),
+			'Device Port: ' . (($endpointDetails['device_port'] ?? '') !== '' ? $endpointDetails['device_port'] : 'Unknown'),
 			'Contact expires: ' . (($endpointDetails['contact_expires_at'] ?? '') !== '' ? $endpointDetails['contact_expires_at'] : 'Unknown'),
 			'Qualify frequency: ' . (($endpointDetails['qualify_frequency'] ?? '') !== '' ? $endpointDetails['qualify_frequency'] . ' seconds' : 'Unknown'),
 			'Last checked: ' . (($endpointDetails['last_checked_at'] ?? '') !== '' ? $endpointDetails['last_checked_at'] : 'Unknown'),
 			'Time: ' . $transition['created_at'],
 			'Source: Asterisk',
 			'',
-			'Please note: email delivery can be delayed.',
+			'Please note: email deliveries can be delayed.',
 			'Check current status in the FreePBX module.',
 		];
 
@@ -1723,28 +2029,54 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function createCsrfToken(): string {
-		if (method_exists('\FreePBX', 'createToken')) {
-			return (string)\FreePBX::createToken('endpointmonitor');
+		if (!$this->ensureSessionForCsrfWrite()) {
+			return '';
 		}
 
-		return '';
+		$token = isset($_SESSION[self::CSRF_SESSION_KEY]) ? (string)$_SESSION[self::CSRF_SESSION_KEY] : '';
+		if ($token !== '') {
+			return $token;
+		}
+
+		try {
+			$token = bin2hex(random_bytes(32));
+			$_SESSION[self::CSRF_SESSION_KEY] = $token;
+			return $token;
+		} catch (\Throwable $e) {
+			$this->logWarning('Unable to create EndPoint Monitor CSRF token: ' . $e->getMessage());
+			return '';
+		}
 	}
 
-	private function validateCsrfToken(): bool {
-		if (!method_exists('\FreePBX', 'checkToken')) {
+	private function ensureSessionForCsrfWrite(): bool {
+		if (!function_exists('session_status')) {
+			return isset($_SESSION) && is_array($_SESSION);
+		}
+
+		$status = session_status();
+		if ($status === PHP_SESSION_ACTIVE) {
 			return true;
 		}
 
-		$token = isset($_REQUEST['token']) ? (string)$_REQUEST['token'] : '';
-		if ($token === '' && isset($_REQUEST['csrf_token'])) {
-			$token = (string)$_REQUEST['csrf_token'];
+		if ($status === PHP_SESSION_DISABLED || headers_sent()) {
+			return false;
 		}
 
+		return @session_start();
+	}
+
+	private function validateCsrfToken(): bool {
+		$sessionToken = isset($_SESSION[self::CSRF_SESSION_KEY]) ? (string)$_SESSION[self::CSRF_SESSION_KEY] : '';
+		if ($sessionToken === '') {
+			return false;
+		}
+
+		$token = isset($_REQUEST['token']) ? (string)$_REQUEST['token'] : '';
 		if ($token === '') {
 			return false;
 		}
 
-		return (bool)\FreePBX::checkToken('endpointmonitor', $token);
+		return hash_equals($sessionToken, $token);
 	}
 
 	private function logError(string $message): void {
@@ -1771,6 +2103,7 @@ class Endpointmonitor implements \BMO {
 	public function runBackgroundMonitor($output = null): bool {
 		try {
 			$settings = $this->getAlertSettings();
+			$this->applyHistoryPruning();
 
 			$interval = (int)($settings['topology_poll_interval_seconds'] ?? 10);
 			if ($interval <= 0) {
@@ -1826,6 +2159,19 @@ class Endpointmonitor implements \BMO {
 		}
 
 		return $source !== '' ? $source : '-';
+	}
+
+	private function reasonLabel(?string $reason): string {
+		$reason = trim((string)$reason);
+
+		switch ($reason) {
+			case 'status_change':
+				return 'Status changed';
+			case 'removed':
+				return 'Contact removed';
+		}
+
+		return $reason !== '' ? $reason : '-';
 	}
 
 	private function now(): string {
