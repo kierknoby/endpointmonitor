@@ -4,7 +4,7 @@
 
 The `1-1-0_rc7` branch is a release-candidate branch for EndPoint Monitor 1.1.0, based on the stable 1.0.1 release.
 
-It includes unreleased 1.1.0 work for history pruning, single-row history deletion, read-only page loading and auto-refresh, module-owned session CSRF protection for AJAX, hourly/daily/monthly/yearly pruning policies, capped alert timing fields, improved pruning controls, responsive history layout, friendlier history labels, and corrected endpoint address display with Device IP shown separately from Seen by Asterisk.
+It includes unreleased 1.1.0 work for history pruning, single-row history deletion, read-only page loading and auto-refresh, module-owned session CSRF protection for AJAX, hourly/daily/monthly/yearly pruning policies, capped alert timing fields, improved pruning controls, responsive history layout, friendlier history labels, and corrected endpoint address display using Device IP and Device Port derived from the SIP Contact URI.
 
 **Development branch warning:** `1-1-0_dev` is not safe to install or test yet. Use the `main` branch for the current stable 1.0.1 release.
 

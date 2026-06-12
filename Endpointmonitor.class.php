@@ -1838,7 +1838,6 @@ class Endpointmonitor implements \BMO {
 			'Version: ' . ($firmwareVersion !== '' ? $firmwareVersion : 'Unknown'),
 			'Device IP: ' . (($endpointDetails['device_ip'] ?? '') !== '' ? $endpointDetails['device_ip'] : 'Unknown'),
 			'Device Port: ' . (($endpointDetails['device_port'] ?? '') !== '' ? $endpointDetails['device_port'] : 'Unknown'),
-			'Seen by Asterisk: ' . (($endpointDetails['seen_by_asterisk'] ?? '') !== '' ? $endpointDetails['seen_by_asterisk'] : 'Unknown'),
 			'Contact expires: ' . (($endpointDetails['contact_expires_at'] ?? '') !== '' ? $endpointDetails['contact_expires_at'] : 'Unknown'),
 			'Qualify frequency: ' . (($endpointDetails['qualify_frequency'] ?? '') !== '' ? $endpointDetails['qualify_frequency'] . ' seconds' : 'Unknown'),
 			'Last checked: ' . (($endpointDetails['last_checked_at'] ?? '') !== '' ? $endpointDetails['last_checked_at'] : 'Unknown'),
