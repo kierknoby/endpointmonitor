@@ -77,6 +77,7 @@ $_emAssetVer = max(
 <link rel="stylesheet" href="modules/endpointmonitor/assets/css/endpointmonitor.css?v=<?php echo $_emAssetVer; ?>">
 
 <div class="endpointmonitor" data-csrf-token="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>" data-poll-interval="<?php echo (int)$pollIntervalSeconds; ?>">
+	<input type="hidden" name="token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
 	<div class="row">
 		<div class="col-sm-12">
 			<h1>

@@ -1928,8 +1928,30 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function createCsrfToken(): string {
+		$token = $this->getCodeIgniterCsrfToken();
+		if ($token !== '') {
+			return $token;
+		}
+
 		if (method_exists('\FreePBX', 'createToken')) {
 			return (string)\FreePBX::createToken('endpointmonitor');
+		}
+
+		return '';
+	}
+
+	private function getCodeIgniterCsrfToken(): string {
+		if (!function_exists('get_instance')) {
+			return '';
+		}
+
+		try {
+			$ci = get_instance();
+			if (isset($ci->security) && method_exists($ci->security, 'get_csrf_hash')) {
+				return (string)$ci->security->get_csrf_hash();
+			}
+		} catch (\Throwable $e) {
+			$this->logWarning('Unable to get FreePBX CSRF token: ' . $e->getMessage());
 		}
 
 		return '';
