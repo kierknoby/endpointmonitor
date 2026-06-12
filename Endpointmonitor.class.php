@@ -595,8 +595,6 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function getPageData(bool $refreshStatus): array {
-		$this->syncDiscoveredEndpoints();
-
 		$refreshError = '';
 		if ($refreshStatus) {
 			try {

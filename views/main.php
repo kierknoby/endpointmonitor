@@ -120,7 +120,7 @@ $_emAssetVer = max(
 						</div>
 					<div id="em-topology-container" style="min-height: 200px;">
 						<?php if (empty($mapEndpoints)): ?>
-							<p class="text-muted"><?php echo _('No endpoints discovered.'); ?></p>
+							<p class="text-muted"><?php echo _('No endpoints discovered yet. Use Manual Refresh to discover endpoints.'); ?></p>
 						<?php else: ?>
 							<div class="em-endpoint-map">
 								<?php foreach ($mapVisibleEndpoints as $endpoint): ?>
@@ -165,7 +165,7 @@ $_emAssetVer = max(
 				</div>
 				<div class="panel-body">
 					<?php if (empty($endpoints)): ?>
-						<p class="em-placeholder"><?php echo _('No PJSIP endpoints were discovered.'); ?></p>
+						<p class="em-placeholder"><?php echo _('No PJSIP endpoints are stored yet. Use Manual Refresh to discover endpoints.'); ?></p>
 					<?php else: ?>
 						<div class="table-responsive">
 							<table class="table table-striped table-condensed em-endpoints">
@@ -417,7 +417,7 @@ $_emAssetVer = max(
 <script>
 	// Endpoint map renderer. Auto-refresh uses the read-only topology AJAX path in endpointmonitor.js.
 	(function() {
-		const textNoEndpoints = <?php echo json_encode(_('No endpoints discovered.')); ?>;
+		const textNoEndpoints = <?php echo json_encode(_('No endpoints discovered yet. Use Manual Refresh to discover endpoints.')); ?>;
 		const textSourceIp = <?php echo json_encode(_('Source IP')); ?>;
 		const textLatency = <?php echo json_encode(_('Latency')); ?>;
 		const textNoQualify = <?php echo json_encode(_('Unavailable; qualify is not enabled.')); ?>;

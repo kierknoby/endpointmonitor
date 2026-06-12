@@ -2,7 +2,7 @@
 
 ## Development Branch
 
-The `1-1-0_dev` branch is carrying unreleased 1.1.0 development work. History pruning, single-row history deletion, and CSRF-safe page-load AJAX handling are under development here and are not released 1.1.0 features yet.
+The `1-1-0_dev` branch is carrying unreleased 1.1.0 development work. History pruning, single-row history deletion, read-only initial page rendering, and CSRF-safe page-load AJAX handling are under development here and are not released 1.1.0 features yet.
 
 **Development branch warning:** `1-1-0_dev` is not safe to install or test yet. Use the `main` branch for the current stable 1.0.1 release.
 
