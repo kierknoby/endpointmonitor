@@ -8,6 +8,40 @@
 		return $('<div>').text(value === null || value === undefined || value === '' ? '-' : String(value)).html();
 	}
 
+	function displayLabel(value) {
+		var text = $.trim(String(value || ''));
+		var labels = {
+			recovery: 'Recovery',
+			unreachable: 'Unreachable',
+			not_registered: 'Not Registered',
+			'not registered': 'Not Registered',
+			registered_no_qualify: 'Registered (No Qualify)',
+			'registered (no qualify)': 'Registered (No Qualify)',
+			status_change: 'Status changed',
+			'status changed': 'Status changed',
+			removed: 'Contact removed',
+			'contact removed': 'Contact removed',
+			sent: 'Sent',
+			failed: 'Failed',
+			suppressed: 'Suppressed',
+			pending: 'Pending',
+			test: 'Test'
+		};
+
+		if (!text) {
+			return '-';
+		}
+
+		var key = text.toLowerCase();
+		if (labels[key]) {
+			return labels[key];
+		}
+
+		return text.replace(/_/g, ' ').replace(/\b\w/g, function (match) {
+			return match.toUpperCase();
+		});
+	}
+
 	function showMessage(message, level) {
 		var el = $('#em-message');
 		el.removeClass('alert-success alert-danger alert-info');
@@ -84,11 +118,11 @@
 			rows.push(
 				'<tr data-history-id="' + id + '">' +
 					'<td>' + escapeHtml(entry.created_at) + '</td>' +
-					'<td><code>' + escapeHtml(entry.extension) + '</code></td>' +
-					'<td>' + escapeHtml(entry.from_state) + '</td>' +
-					'<td>' + escapeHtml(entry.to_state) + '</td>' +
-					'<td>' + escapeHtml(entry.source) + '</td>' +
-					'<td>' + escapeHtml(entry.reason) + '</td>' +
+					'<td>' + escapeHtml(entry.extension) + '</td>' +
+					'<td>' + escapeHtml(displayLabel(entry.from_state)) + '</td>' +
+					'<td>' + escapeHtml(displayLabel(entry.to_state)) + '</td>' +
+					'<td>' + escapeHtml(displayLabel(entry.source)) + '</td>' +
+					'<td>' + escapeHtml(displayLabel(entry.reason)) + '</td>' +
 					'<td>' + latency + '</td>' +
 					'<td><button type="button" class="btn btn-xs btn-danger em-delete-status-history" data-history-id="' + id + '" title="Delete Status History row"><i class="fa fa-trash"></i></button></td>' +
 				'</tr>'
@@ -108,11 +142,11 @@
 			rows.push(
 				'<tr data-history-id="' + id + '">' +
 					'<td>' + escapeHtml(entry.sent_at) + '</td>' +
-					'<td><code>' + escapeHtml(entry.extension) + '</code></td>' +
-					'<td>' + escapeHtml(entry.alert_type) + '</td>' +
-					'<td>' + escapeHtml(entry.status) + '</td>' +
+					'<td>' + escapeHtml(entry.extension) + '</td>' +
+					'<td>' + escapeHtml(displayLabel(entry.alert_type)) + '</td>' +
+					'<td>' + escapeHtml(displayLabel(entry.status)) + '</td>' +
 					'<td>' + escapeHtml(entry.recipient) + '</td>' +
-					'<td>' + escapeHtml(entry.result) + '</td>' +
+					'<td>' + escapeHtml(displayLabel(entry.result)) + '</td>' +
 					'<td>' + escapeHtml(entry.error) + '</td>' +
 					'<td><button type="button" class="btn btn-xs btn-danger em-delete-alert-history" data-history-id="' + id + '" title="Delete Alert History row"><i class="fa fa-trash"></i></button></td>' +
 				'</tr>'

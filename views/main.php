@@ -69,6 +69,38 @@ $_emStatusClass = function ($status) {
 	}
 };
 
+$_emDisplayLabel = function ($value) {
+	$value = trim((string)$value);
+	if ($value === '') {
+		return '-';
+	}
+
+	$labels = [
+		'recovery' => 'Recovery',
+		'unreachable' => 'Unreachable',
+		'not_registered' => 'Not Registered',
+		'not registered' => 'Not Registered',
+		'registered_no_qualify' => 'Registered (No Qualify)',
+		'registered (no qualify)' => 'Registered (No Qualify)',
+		'status_change' => 'Status changed',
+		'status changed' => 'Status changed',
+		'removed' => 'Contact removed',
+		'contact removed' => 'Contact removed',
+		'sent' => 'Sent',
+		'failed' => 'Failed',
+		'suppressed' => 'Suppressed',
+		'pending' => 'Pending',
+		'test' => 'Test',
+	];
+
+	$key = strtolower($value);
+	if (isset($labels[$key])) {
+		return $labels[$key];
+	}
+
+	return ucwords(str_replace('_', ' ', $value));
+};
+
 $_emContactExpiryText = function ($expiresAt) {
 	$expiresAt = trim((string)$expiresAt);
 	if ($expiresAt === '') {
@@ -350,11 +382,11 @@ $_emAssetVer = max(
 								<?php foreach ($statusHistory as $entry): ?>
 									<tr data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>">
 										<td><?php echo htmlspecialchars($entry['created_at'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
-										<td><code><?php echo htmlspecialchars($entry['extension'], ENT_QUOTES, 'UTF-8'); ?></code></td>
-										<td><?php echo htmlspecialchars($entry['from_state'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
-										<td><?php echo htmlspecialchars($entry['to_state'], ENT_QUOTES, 'UTF-8'); ?></td>
-										<td><?php echo htmlspecialchars($entry['source'], ENT_QUOTES, 'UTF-8'); ?></td>
-										<td><?php echo htmlspecialchars($entry['reason'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
+										<td><?php echo htmlspecialchars($entry['extension'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
+										<td><?php echo htmlspecialchars($_emDisplayLabel($entry['from_state'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
+										<td><?php echo htmlspecialchars($_emDisplayLabel($entry['to_state'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
+										<td><?php echo htmlspecialchars($_emDisplayLabel($entry['source'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
+										<td><?php echo htmlspecialchars($_emDisplayLabel($entry['reason'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo $entry['latency_ms'] !== null && $entry['latency_ms'] !== '' ? htmlspecialchars((string)$entry['latency_ms'], ENT_QUOTES, 'UTF-8') . ' ms' : '-'; ?></td>
 										<td>
 											<button type="button" class="btn btn-xs btn-danger em-delete-status-history" data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>" title="<?php echo _('Delete Status History row'); ?>">
@@ -421,11 +453,11 @@ $_emAssetVer = max(
 								<?php foreach ($alertHistory as $entry): ?>
 									<tr data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>">
 										<td><?php echo htmlspecialchars($entry['sent_at'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
-										<td><code><?php echo htmlspecialchars($entry['extension'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></code></td>
-										<td><?php echo htmlspecialchars($entry['alert_type'], ENT_QUOTES, 'UTF-8'); ?></td>
-										<td><?php echo htmlspecialchars($entry['status'], ENT_QUOTES, 'UTF-8'); ?></td>
+										<td><?php echo htmlspecialchars($entry['extension'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
+										<td><?php echo htmlspecialchars($_emDisplayLabel($entry['alert_type'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
+										<td><?php echo htmlspecialchars($_emDisplayLabel($entry['status'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo htmlspecialchars($entry['recipient'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
-										<td><?php echo htmlspecialchars($entry['result'], ENT_QUOTES, 'UTF-8'); ?></td>
+										<td><?php echo htmlspecialchars($_emDisplayLabel($entry['result'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
 										<td><?php echo htmlspecialchars($entry['error'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></td>
 										<td>
 											<button type="button" class="btn btn-xs btn-danger em-delete-alert-history" data-history-id="<?php echo (int)($entry['id'] ?? 0); ?>" title="<?php echo _('Delete Alert History row'); ?>">
