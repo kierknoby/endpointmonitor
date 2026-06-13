@@ -815,6 +815,7 @@ class Endpointmonitor implements \BMO {
 			}
 
 			$previousStatus = (string)$endpoint['last_known_status'];
+			$previousContactUri = $endpoint['contact_uri'] ?? null;
 			$previousHadContact = $this->hadRegisteredState($previousStatus) || (string)($endpoint['contact_uri'] ?? '') !== '';
 			$contact = $contacts[$endpoint['extension']] ?? null;
 			$status = self::STATUS_NOT_REGISTERED;
@@ -852,12 +853,17 @@ class Endpointmonitor implements \BMO {
 			}
 
 			if ($previousStatus !== $status) {
+				$historyContactUri = $contactUri;
+				if ($status === self::STATUS_NOT_REGISTERED && trim((string)$previousContactUri) !== '') {
+					$historyContactUri = $previousContactUri;
+				}
+
 				$this->insertStatusHistory(
 					(string)$endpoint['extension'],
 					$previousStatus,
 					$status,
 					$this->historyReason($previousHadContact, $status),
-					$contactUri,
+					$historyContactUri,
 					$latency,
 					$now
 				);
@@ -1017,6 +1023,60 @@ class Endpointmonitor implements \BMO {
 
 		if (strpos($hostPort, ':') !== false && stripos($hostPort, 'sip:') === 0) {
 			$hostPort = substr($hostPort, strpos($hostPort, ':') + 1);
+		}
+
+		$host = null;
+		$port = null;
+		if (preg_match('/^\[([^\]]+)\](?::([0-9]+))?$/', $hostPort, $matches)) {
+			$host = trim($matches[1]);
+			$port = $matches[2] ?? null;
+		} elseif (substr_count($hostPort, ':') === 1 && preg_match('/^([^:]+):([0-9]+)$/', $hostPort, $matches)) {
+			$host = trim($matches[1]);
+			$port = $matches[2];
+		} elseif (substr_count($hostPort, ':') === 0) {
+			$host = $hostPort;
+		} else {
+			$host = $hostPort;
+		}
+
+		$host = trim((string)$host, " \t\n\r\0\x0B[]");
+		if ($host === '') {
+			return $result;
+		}
+		if (!filter_var($host, FILTER_VALIDATE_IP) && !preg_match('/^[A-Za-z0-9.-]+$/', $host)) {
+			return $result;
+		}
+
+		$result['host'] = $host;
+		if ($port !== null && ctype_digit((string)$port)) {
+			$portNumber = (int)$port;
+			if ($portNumber > 0 && $portNumber <= 65535) {
+				$result['port'] = $portNumber;
+			}
+		}
+
+		return $result;
+	}
+
+	private function parseContactUriNetworkAddress(?string $contactUri): array {
+		$result = ['host' => null, 'port' => null];
+		$contactUri = trim((string)$contactUri);
+		if ($contactUri === '' || preg_match('/\s/', $contactUri)) {
+			return $result;
+		}
+
+		if (!preg_match('/[;?&]x-ast-orig-host=([^;?&#>\s]+)/', $contactUri, $matches)) {
+			return $result;
+		}
+
+		return $this->parseAddressHostPort(rawurldecode($matches[1]));
+	}
+
+	private function parseAddressHostPort(string $hostPort): array {
+		$result = ['host' => null, 'port' => null];
+		$hostPort = trim($hostPort, " \t\n\r\0\x0B<>");
+		if ($hostPort === '') {
+			return $result;
 		}
 
 		$host = null;
@@ -1838,6 +1898,27 @@ class Endpointmonitor implements \BMO {
 		$deviceName = trim((string)($endpointDetails['device_name'] ?? ''));
 		$firmwareVersion = trim((string)($endpointDetails['firmware_version'] ?? ''));
 		$userAgent = trim((string)($endpointDetails['user_agent'] ?? ''));
+		$historicalAddress = $toState === self::STATUS_NOT_REGISTERED;
+		$contactUriForAddress = $endpointDetails['contact_uri'] ?? null;
+		$deviceAddress = [
+			'host' => $endpointDetails['device_ip'] ?? null,
+			'port' => $endpointDetails['device_port'] ?? null,
+		];
+		if ($toState === self::STATUS_NOT_REGISTERED) {
+			$contactUriForAddress = $transition['contact_uri'] ?? null;
+			$transitionDeviceAddress = $this->parseContactUriAddress($contactUriForAddress);
+			if ($transitionDeviceAddress['host'] !== null || $transitionDeviceAddress['port'] !== null) {
+				$deviceAddress = $transitionDeviceAddress;
+			}
+		}
+		$networkAddress = $this->parseContactUriNetworkAddress($contactUriForAddress);
+		if ($networkAddress['host'] === null && ($endpointDetails['source_ip'] ?? '') !== '') {
+			$networkAddress['host'] = $endpointDetails['source_ip'];
+		}
+		if ($networkAddress['port'] === null && ($endpointDetails['source_port'] ?? '') !== '') {
+			$networkAddress['port'] = $endpointDetails['source_port'];
+		}
+		$addressPrefix = $historicalAddress ? 'Last ' : '';
 		$message = [
 			'EndPoint Monitor state change',
 			'',
@@ -1849,8 +1930,10 @@ class Endpointmonitor implements \BMO {
 			'Endpoint details',
 			'Device: ' . ($deviceName !== '' ? $deviceName : 'Unknown'),
 			'Version: ' . ($firmwareVersion !== '' ? $firmwareVersion : 'Unknown'),
-			'Device IP: ' . (($endpointDetails['device_ip'] ?? '') !== '' ? $endpointDetails['device_ip'] : 'Unknown'),
-			'Device Port: ' . (($endpointDetails['device_port'] ?? '') !== '' ? $endpointDetails['device_port'] : 'Unknown'),
+			$addressPrefix . 'Device IP: ' . (($deviceAddress['host'] ?? '') !== '' ? $deviceAddress['host'] : 'Unknown'),
+			$addressPrefix . 'Device Port: ' . (($deviceAddress['port'] ?? '') !== '' ? $deviceAddress['port'] : 'Unknown'),
+			$addressPrefix . 'Network IP: ' . (($networkAddress['host'] ?? '') !== '' ? $networkAddress['host'] : 'Unknown'),
+			$addressPrefix . 'Network Port: ' . (($networkAddress['port'] ?? '') !== '' ? $networkAddress['port'] : 'Unknown'),
 			'Contact expires: ' . (($endpointDetails['contact_expires_at'] ?? '') !== '' ? $endpointDetails['contact_expires_at'] : 'Unknown'),
 			'Qualify frequency: ' . (($endpointDetails['qualify_frequency'] ?? '') !== '' ? $endpointDetails['qualify_frequency'] . ' seconds' : 'Unknown'),
 			'Transition time: ' . $transition['created_at'],
