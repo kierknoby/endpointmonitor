@@ -8,7 +8,7 @@ Patch release: 1.1.1, released on 13 June 2026.
 
 Patch release from 1.1.0 to 1.1.1 on 13 June 2026 by kierknoby
 
-Fixes stale endpoint alert backlog replay by only sending alerts for fresh post-debounce transitions, requiring endpoint alert candidates to still be selected, aligning duplicate alert checks with alert type, and updating alert email wording to describe the transition rather than presenting old history as current status.
+Fixes stale endpoint alert backlog replay by only sending alerts for fresh post-debounce transitions, requiring endpoint alert candidates to still be selected, aligning duplicate alert checks with alert type, updating alert email wording to describe the transition rather than presenting old history as current status, and showing Device and Network address details while preserving last-known address details for Not Registered alerts where available.
 
 Minor release from 1.0.1 to 1.1.0 on 12 June 2026 by kierknoby
 
@@ -261,8 +261,8 @@ EndPoint Monitor has four current paths:
                                     rows after explicit administrator confirmation.
                                     * Endpoint Status Map shows a limited tile view by default, with Show options for
                                       6, 30, 60, 120, and All.
-                                      * Endpoint detail displays device IP, device port, device, version, contact
-                                        expiry, qualify frequency, and latency where available.
+                                      * Endpoint detail displays device IP, device port, network IP, network port,
+                                        device, version, contact expiry, qualify frequency, and latency where available.
                                         * Temporary action messages appear as fading overlay messages so they remain visible on long pages.
                                         * Warning banners appear where alert configuration cannot support delivery.
 
@@ -342,6 +342,17 @@ EndPoint Monitor has four current paths:
 
                                           Alert emails include a reminder that email delivery can be delayed and that
                                           current status should be checked in the FreePBX module.
+
+                                          Endpoint alert emails show both Device and Network address details where
+                                          available. Device IP and Device Port are derived from the SIP Contact URI
+                                          advertised by the endpoint. Network IP and Network Port are derived from the
+                                          network-side registration details recorded by Asterisk, such as the original
+                                          host or registrar metadata where available.
+
+                                          For Not Registered / Contact removed alerts, the module uses historical labels,
+                                          such as Last Device IP, Last Device Port, Last Network IP, and Last Network
+                                          Port, because the endpoint is no longer currently registered. Unknown is shown
+                                          only when no useful current or historical address is available.
 
                                           Alert decisions are recorded per transition, alert type, and recipient. The
                                           module prevents repeated handling of the same transition, alert type, and
