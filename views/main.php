@@ -62,10 +62,10 @@ $_emStatusClass = function ($status) {
 		case 'Unreachable':
 			return 'em-led-red';
 		case 'Not registered':
-			return 'em-led-grey';
+			return 'em-led-red';
 		case 'Unknown':
 		default:
-			return 'em-led-amber';
+			return 'em-led-grey';
 	}
 };
 
@@ -499,10 +499,10 @@ $_emAssetVer = max(
 				case 'Unreachable':
 					return 'em-led-red';
 				case 'Not registered':
-					return 'em-led-grey';
+					return 'em-led-red';
 				case 'Unknown':
 				default:
-					return 'em-led-amber';
+					return 'em-led-grey';
 			}
 		}
 
