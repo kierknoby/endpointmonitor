@@ -54,19 +54,25 @@ $pollIntervalSeconds = isset($pollIntervalSeconds) ? (int)$pollIntervalSeconds :
 $csrfToken = isset($csrfToken) ? (string)$csrfToken : '';
 
 $_emStatusClass = function ($status) {
-	switch ((string)$status) {
-		case 'Reachable':
+	switch (strtolower(trim((string)$status))) {
+		case 'reachable':
 			return 'em-led-green';
-		case 'Registered (no qualify)':
+		case 'registered (no qualify)':
+		case 'registered_no_qualify':
 			return 'em-led-amber';
-		case 'Unreachable':
+		case 'unreachable':
+		case 'not registered':
+		case 'not_registered':
 			return 'em-led-red';
-		case 'Not registered':
-			return 'em-led-red';
-		case 'Unknown':
+		case 'unknown':
 		default:
 			return 'em-led-grey';
 	}
+};
+
+$_emIsRegisteredNoQualify = function ($status) {
+	$status = strtolower(trim((string)$status));
+	return $status === 'registered (no qualify)' || $status === 'registered_no_qualify';
 };
 
 $_emDisplayLabel = function ($value) {
@@ -195,7 +201,7 @@ $_emAssetVer = max(
 											<?php echo _('Latency'); ?>:
 											<?php if ($endpoint['latency_ms'] !== null && $endpoint['latency_ms'] !== ''): ?>
 												<?php echo htmlspecialchars((string)$endpoint['latency_ms'], ENT_QUOTES, 'UTF-8'); ?> ms
-											<?php elseif ($endpoint['last_known_status'] === 'Registered (no qualify)'): ?>
+											<?php elseif ($_emIsRegisteredNoQualify($endpoint['last_known_status'] ?? '')): ?>
 												<?php echo _('Unavailable; qualify is not enabled.'); ?>
 											<?php else: ?>
 												-
@@ -491,26 +497,32 @@ $_emAssetVer = max(
 		let latestMapEndpoints = <?php echo json_encode($mapEndpoints); ?>;
 
 		function statusClass(status) {
-			switch (status || 'Unknown') {
-				case 'Reachable':
+			switch (String(status || 'Unknown').trim().toLowerCase()) {
+				case 'reachable':
 					return 'em-led-green';
-				case 'Registered (no qualify)':
+				case 'registered (no qualify)':
+				case 'registered_no_qualify':
 					return 'em-led-amber';
-				case 'Unreachable':
+				case 'unreachable':
+				case 'not registered':
+				case 'not_registered':
 					return 'em-led-red';
-				case 'Not registered':
-					return 'em-led-red';
-				case 'Unknown':
+				case 'unknown':
 				default:
 					return 'em-led-grey';
 			}
+		}
+
+		function isRegisteredNoQualify(status) {
+			status = String(status || '').trim().toLowerCase();
+			return status === 'registered (no qualify)' || status === 'registered_no_qualify';
 		}
 
 		function latencyText(endpoint, status) {
 			if (endpoint.latency_ms !== null && endpoint.latency_ms !== undefined && endpoint.latency_ms !== '') {
 				return escapeHtml(endpoint.latency_ms) + ' ms';
 			}
-			if (status === 'Registered (no qualify)') {
+			if (isRegisteredNoQualify(status)) {
 				return textNoQualify;
 			}
 			return '-';

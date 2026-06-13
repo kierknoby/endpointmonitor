@@ -42,6 +42,11 @@
 		});
 	}
 
+	function isRegisteredNoQualify(value) {
+		value = $.trim(String(value || '')).toLowerCase();
+		return value === 'registered (no qualify)' || value === 'registered_no_qualify';
+	}
+
 	function showMessage(message, level) {
 		var el = $('#em-message');
 		el.removeClass('alert-success alert-danger alert-info');
@@ -102,7 +107,7 @@
 			rows.find('.em-last-checked').text(endpoint.last_checked_at || '-');
 			if (endpoint.latency_ms) {
 				rows.find('.em-latency').text(endpoint.latency_ms + ' ms');
-			} else if (status === 'Registered (no qualify)') {
+			} else if (isRegisteredNoQualify(status)) {
 				rows.find('.em-latency').text('Unavailable; qualify is not enabled.');
 			} else {
 				rows.find('.em-latency').text('-');
