@@ -13,12 +13,12 @@
 		var labels = {
 			recovery: 'Recovery',
 			unreachable: 'Unreachable',
-			not_registered: 'Not Registered',
-			'not registered': 'Not Registered',
-			registered_no_qualify: 'Registered (No Qualify)',
-			'registered (no qualify)': 'Registered (No Qualify)',
-			status_change: 'Status Change',
-			'status changed': 'Status Change',
+			not_registered: 'Not registered',
+			'not registered': 'Not registered',
+			registered_no_qualify: 'Registered (no qualify)',
+			'registered (no qualify)': 'Registered (no qualify)',
+			status_change: 'Status changed',
+			'status changed': 'Status changed',
 			removed: 'Contact removed',
 			'contact removed': 'Contact removed',
 			sent: 'Sent',
@@ -92,7 +92,7 @@
 		$.each(endpoints || [], function (_, endpoint) {
 			var rows = endpointRows(endpoint.extension);
 			var status = endpoint.last_known_status || endpoint.status || '-';
-			rows.find('.em-status-value').text(status);
+			rows.find('.em-status-value').text(displayLabel(status));
 			rows.find('.em-device-name').text(endpoint.device_name || '-');
 			rows.find('.em-firmware-version').text(endpoint.firmware_version || '-');
 			rows.find('.em-source-ip').text(endpoint.source_ip || '-');

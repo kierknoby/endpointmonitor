@@ -8,7 +8,7 @@ Patch release: 1.1.1, released on 13 June 2026.
 
 Patch release from 1.1.0 to 1.1.1 on 13 June 2026 by kierknoby
 
-Fixes stale EndPoint alert backlog replay by only sending alerts for fresh post-debounce transitions, requiring EndPoint alert candidates to still be selected, aligning duplicate alert checks with alert type, updating alert email wording to describe the transition rather than presenting old history as current status, showing Device and Network address details while preserving last-known address details for Not Registered alerts where available, tidy history table display labels, clean up EndPoint display wording, improve mobile history and endpoint layouts, and displaying EndPoint card contact expiry as a compact countdown.
+Fixes stale EndPoint alert backlog replay by only sending alerts for fresh post-debounce transitions, requiring EndPoint alert candidates to still be selected, aligning duplicate alert checks with alert type, updating alert email wording to describe the transition rather than presenting old history as current status, showing Device and Network address details while preserving last-known address details for Not registered alerts where available, tidying history table display labels, cleaning up EndPoint display wording, improving mobile history and EndPoint layouts, and displaying EndPoint card contact expiry as a compact countdown.
 
 Minor release from 1.0.1 to 1.1.0 on 12 June 2026 by kierknoby
 
@@ -284,17 +284,17 @@ Current states:
 
 * Reachable
 * Unreachable
-* Registered (No Qualify)
-* Not Registered
+* Registered (no qualify)
+* Not registered
 * Unknown
 
-`Registered (No Qualify)` means Asterisk has a contact but qualify/RTT data is
+`Registered (no qualify)` means Asterisk has a contact but qualify/RTT data is
 not available. The UI shows RTT as unavailable rather than treating the EndPoint
 as unknown.
 
 `Removed` is not used as a current state. When an EndPoint previously had a
 contact or registered/reachable state and reconciliation finds no contact, the
-current state becomes `Not Registered` and the transition reason is shown as
+current state becomes `Not registered` and the transition reason is shown as
 Contact removed.
 
 ## Status History
@@ -306,7 +306,7 @@ Reconciliation writes history rows with:
 
 * `source = Asterisk`
 * Contact removed when a previously contacted/registered EndPoint becomes
-  `Not Registered`
+  `Not registered`
 * Status changed for other state changes
 
 Until AMI ContactStatus ingestion exists, short flaps can still be missed
@@ -328,16 +328,16 @@ Defaults:
 
 Alertable transitions:
 
-* Reachable or Registered (No Qualify) to Unreachable
-* Reachable, Registered (No Qualify), or Unreachable to Not Registered
-* Unreachable or Not Registered to Reachable
-* Unreachable or Not Registered to Registered (No Qualify)
+* Reachable or Registered (no qualify) to Unreachable
+* Reachable, Registered (no qualify), or Unreachable to Not registered
+* Unreachable or Not registered to Reachable
+* Unreachable or Not registered to Registered (no qualify)
 
 EndPoint alert candidates are limited to fresh post-debounce transitions so old
 status-history rows are not replayed later after recipient or settings changes.
 
 First baseline transitions from Unknown are suppressed. If an EndPoint recovers
-to Registered (No Qualify), the email notes that qualify is disabled and RTT is
+to Registered (no qualify), the email notes that qualify is disabled and RTT is
 unavailable.
 
 Alert emails include a reminder that email delivery can be delayed and that
@@ -349,7 +349,7 @@ Device Port are derived from that EndPoint-advertised address. Network IP and
 Network Port are derived from the SIP Contact URI address used for the
 registration path, falling back to registrar metadata where available.
 
-For Not Registered / Contact removed alerts, the module uses historical labels,
+For Not registered / Contact removed alerts, the module uses historical labels,
 such as Last Device IP, Last Device Port, Last Network IP, and Last Network
 Port, because the EndPoint is no longer currently registered. Unknown is shown
 only when no useful current or historical address is available.

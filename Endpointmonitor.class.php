@@ -1915,7 +1915,7 @@ class Endpointmonitor implements \BMO {
 	private function buildAlertEmail(array $transition, string $alertType): array {
 		$extension = (string)$transition['extension'];
 		$toState = (string)$transition['to_state'];
-		$subjectStatus = $toState;
+		$subjectStatus = $this->stateLabel($toState);
 		if ($alertType === 'recovery') {
 			$subjectStatus = 'has recovered';
 		}
@@ -1942,7 +1942,7 @@ class Endpointmonitor implements \BMO {
 			'EndPoint Monitor state change',
 			'',
 			'Extension: ' . $extension,
-			'New state: ' . $toState,
+			'New state: ' . $this->stateLabel($toState),
 			'Reason: ' . $this->reasonLabel($transition['reason'] ?? ''),
 			'Latency: ' . $latency,
 			'',
@@ -2285,6 +2285,21 @@ class Endpointmonitor implements \BMO {
 		}
 
 		return $reason !== '' ? $reason : '-';
+	}
+
+	private function stateLabel(?string $state): string {
+		$state = trim((string)$state);
+
+		switch (strtolower($state)) {
+			case 'not_registered':
+			case 'not registered':
+				return 'Not registered';
+			case 'registered_no_qualify':
+			case 'registered (no qualify)':
+				return 'Registered (no qualify)';
+		}
+
+		return $state !== '' ? $state : '-';
 	}
 
 	private function now(): string {

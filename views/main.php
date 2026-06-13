@@ -80,10 +80,10 @@ $_emDisplayLabel = function ($value) {
 		'unreachable' => 'Unreachable',
 		'not_registered' => 'Not registered',
 		'not registered' => 'Not registered',
-		'registered_no_qualify' => 'Registered (No Qualify)',
-		'registered (no qualify)' => 'Registered (No Qualify)',
-		'status_change' => 'Status change',
-		'status changed' => 'Status change',
+		'registered_no_qualify' => 'Registered (no qualify)',
+		'registered (no qualify)' => 'Registered (no qualify)',
+		'status_change' => 'Status changed',
+		'status changed' => 'Status changed',
 		'removed' => 'Contact removed',
 		'contact removed' => 'Contact removed',
 		'sent' => 'Sent',
@@ -182,7 +182,7 @@ $_emAssetVer = max(
 											<span><?php echo htmlspecialchars($endpoint['extension'], ENT_QUOTES, 'UTF-8'); ?></span>
 										</div>
 										<div class="em-map-description"><?php echo htmlspecialchars($endpoint['description'] ?: '-', ENT_QUOTES, 'UTF-8'); ?></div>
-										<div class="em-map-status"><?php echo htmlspecialchars($endpoint['last_known_status'] ?: 'Unknown', ENT_QUOTES, 'UTF-8'); ?></div>
+										<div class="em-map-status"><?php echo htmlspecialchars($_emDisplayLabel($endpoint['last_known_status'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></div>
 										<div class="em-map-detail"><?php echo _('Device IP'); ?>: <?php echo htmlspecialchars(($endpoint['device_ip'] ?? '') !== '' ? (string)$endpoint['device_ip'] : _('Unknown'), ENT_QUOTES, 'UTF-8'); ?></div>
 										<div class="em-map-detail"><?php echo _('Device Port'); ?>: <?php echo htmlspecialchars(($endpoint['device_port'] ?? '') !== '' ? (string)$endpoint['device_port'] : _('Unknown'), ENT_QUOTES, 'UTF-8'); ?></div>
 										<div class="em-map-detail"><?php echo _('Network IP'); ?>: <?php echo htmlspecialchars(($endpoint['network_ip'] ?? '') !== '' ? (string)$endpoint['network_ip'] : _('Unknown'), ENT_QUOTES, 'UTF-8'); ?></div>
@@ -516,6 +516,33 @@ $_emAssetVer = max(
 			return '-';
 		}
 
+		function displayLabel(value) {
+			const text = String(value || '').trim();
+			const labels = {
+				recovery: 'Recovery',
+				unreachable: 'Unreachable',
+				not_registered: 'Not registered',
+				'not registered': 'Not registered',
+				registered_no_qualify: 'Registered (no qualify)',
+				'registered (no qualify)': 'Registered (no qualify)',
+				status_change: 'Status changed',
+				'status changed': 'Status changed',
+				removed: 'Contact removed',
+				'contact removed': 'Contact removed',
+				sent: 'Sent',
+				failed: 'Failed',
+				suppressed: 'Suppressed',
+				pending: 'Pending',
+				test: 'Test'
+			};
+
+			if (!text) {
+				return '-';
+			}
+
+			return labels[text.toLowerCase()] || text;
+		}
+
 		function contactExpiryText(expiresAt) {
 			if (!expiresAt) {
 				return textUnknown;
@@ -587,7 +614,7 @@ $_emAssetVer = max(
 				html += '<div class="em-map-tile">';
 				html += '<div class="em-map-title"><span class="em-led ' + statusClass(status) + '"></span><span>' + escapeHtml(endpoint.extension) + '</span></div>';
 				html += '<div class="em-map-description">' + escapeHtml(endpoint.description || '-') + '</div>';
-				html += '<div class="em-map-status">' + escapeHtml(status) + '</div>';
+				html += '<div class="em-map-status">' + escapeHtml(displayLabel(status)) + '</div>';
 				html += '<div class="em-map-detail">' + escapeHtml(textDeviceIp) + ': ' + escapeHtml(endpoint.device_ip || textUnknown) + '</div>';
 				html += '<div class="em-map-detail">' + escapeHtml(textDevicePort) + ': ' + escapeHtml(endpoint.device_port || textUnknown) + '</div>';
 				html += '<div class="em-map-detail">' + escapeHtml(textNetworkIp) + ': ' + escapeHtml(endpoint.network_ip || textUnknown) + '</div>';
