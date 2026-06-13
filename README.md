@@ -1,5 +1,9 @@
 # EndPoint Monitor for FreePBX 17
 
+## Development Release
+
+1.2.0 is an active development branch and may be unstable. Do not use on production systems. Use `main` for the current stable release.
+
 ## Current Release
 
 Patch release: 1.1.1, released on 13 June 2026.
