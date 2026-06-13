@@ -13,15 +13,16 @@ namespace FreePBX\modules;
 class Endpointmonitor implements \BMO {
 
 	/** Fallback only. Authoritative version lives in module.xml. */
-	const VERSION = '1.1.0';
+	const VERSION = '1.1.1';
 
 	const STATUS_REACHABLE = 'Reachable';
 	const STATUS_UNREACHABLE = 'Unreachable';
-	const STATUS_REGISTERED_NO_QUALIFY = 'Registered (No Qualify)';
+	const STATUS_REGISTERED_NO_QUALIFY = 'Registered (no qualify)';
 	const STATUS_UNKNOWN = 'Unknown';
-	const STATUS_NOT_REGISTERED = 'Not Registered';
+	const STATUS_NOT_REGISTERED = 'Not registered';
 	const CSRF_SESSION_KEY = 'endpointmonitor_csrf_token';
 	const ALERT_TIMING_MAX_SECONDS = 86400;
+	const ALERT_STALE_TRANSITION_MAX_SECONDS = 300;
 
 	private $settingsDefaults = [
 		'alert_enabled' => '0',
@@ -270,14 +271,14 @@ class Endpointmonitor implements \BMO {
 
 			return [
 				'status' => $data['refreshError'] === '',
-				'message' => $data['refreshError'] === '' ? _('Endpoint status refreshed.') : $data['refreshError'],
+				'message' => $data['refreshError'] === '' ? _('EndPoint status refreshed.') : $data['refreshError'],
 				'endpoints' => $data['endpoints'],
 				'statusHistory' => $data['statusHistory'],
 				'alertHistory' => $data['alertHistory'],
 				'lastRefresh' => $data['lastRefresh'],
 			];
 		} catch (\Exception $e) {
-			$message = _('Failed to refresh endpoint status. Please check the system logs.');
+			$message = _('Failed to refresh EndPoint status. Please check the system logs.');
 			$this->logError('Refresh failed: ' . $e->getMessage());
 			return ['status' => false, 'message' => $message];
 		}
@@ -288,7 +289,7 @@ class Endpointmonitor implements \BMO {
 		$enabled = !empty($_REQUEST['enabled']) ? 1 : 0;
 
 		if ($extension === '') {
-			return ['status' => false, 'message' => _('Missing endpoint.')];
+			return ['status' => false, 'message' => _('Missing EndPoint.')];
 		}
 
 		$this->syncDiscoveredEndpoints();
@@ -302,7 +303,7 @@ class Endpointmonitor implements \BMO {
 
 		return [
 			'status' => true,
-			'message' => $enabled ? _('Endpoint selected.') : _('Endpoint selection cleared.'),
+			'message' => $enabled ? _('EndPoint selected.') : _('EndPoint selection cleared.'),
 			'endpoint' => $extension,
 			'enabled' => $enabled,
 		];
@@ -313,7 +314,7 @@ class Endpointmonitor implements \BMO {
 		$notes = isset($_REQUEST['notes']) ? (string)$_REQUEST['notes'] : '';
 
 		if ($extension === '') {
-			return ['status' => false, 'message' => _('Missing endpoint.')];
+			return ['status' => false, 'message' => _('Missing EndPoint.')];
 		}
 
 		$notes = trim(preg_replace('/\s+/', ' ', $notes));
@@ -342,7 +343,7 @@ class Endpointmonitor implements \BMO {
 
 		return [
 			'status' => true,
-			'message' => $notes === '' ? _('Endpoint note cleared.') : _('Endpoint note saved.'),
+			'message' => $notes === '' ? _('EndPoint note cleared.') : _('EndPoint note saved.'),
 			'extension' => $extension,
 			'notes' => $notes,
 			'notes_updated_at' => $notesUpdatedAt,
@@ -491,20 +492,24 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function handleGetTopology(): array {
-		// Endpoint map read-only action: returns stored endpoint status only.
+		// Read-only action: returns stored endpoint, status-history, and alert-history data only.
 		// Do not trigger discovery, reconciliation, history writes, or alerts here.
 		try {
 			return [
 				'status' => true,
 				'endpoints' => $this->getEndpointMapRows(),
+				'statusHistory' => $this->getStatusHistory(),
+				'alertHistory' => $this->getAlertHistory(),
 				'timestamp' => $this->now(),
 			];
 		} catch (\Exception $e) {
 			$this->logWarning('Endpoint map retrieval failed: ' . $e->getMessage());
 			return [
 				'status' => false,
-				'message' => _('Unable to load endpoint map.'),
+				'message' => _('Unable to load EndPoint map.'),
 				'endpoints' => [],
+				'statusHistory' => [],
+				'alertHistory' => [],
 			];
 		}
 	}
@@ -611,7 +616,7 @@ class Endpointmonitor implements \BMO {
 				$this->reconcileCurrentStatus();
 			} catch (\Exception $e) {
 				$this->logError('Status reconciliation failed: ' . $e->getMessage());
-				$refreshError = _('Unable to reconcile endpoint status. Please check the system logs.');
+				$refreshError = _('Unable to reconcile EndPoint status. Please check the system logs.');
 			}
 		}
 
@@ -813,7 +818,8 @@ class Endpointmonitor implements \BMO {
 				continue;
 			}
 
-			$previousStatus = (string)$endpoint['last_known_status'];
+			$previousStatus = $this->normaliseState($endpoint['last_known_status'] ?? self::STATUS_UNKNOWN);
+			$previousContactUri = $endpoint['contact_uri'] ?? null;
 			$previousHadContact = $this->hadRegisteredState($previousStatus) || (string)($endpoint['contact_uri'] ?? '') !== '';
 			$contact = $contacts[$endpoint['extension']] ?? null;
 			$status = self::STATUS_NOT_REGISTERED;
@@ -851,12 +857,17 @@ class Endpointmonitor implements \BMO {
 			}
 
 			if ($previousStatus !== $status) {
+				$historyContactUri = $contactUri;
+				if ($status === self::STATUS_NOT_REGISTERED && trim((string)$previousContactUri) !== '') {
+					$historyContactUri = $previousContactUri;
+				}
+
 				$this->insertStatusHistory(
 					(string)$endpoint['extension'],
 					$previousStatus,
 					$status,
 					$this->historyReason($previousHadContact, $status),
-					$contactUri,
+					$historyContactUri,
 					$latency,
 					$now
 				);
@@ -1051,6 +1062,83 @@ class Endpointmonitor implements \BMO {
 		return $result;
 	}
 
+	private function parseContactUriOriginalHostAddress(?string $contactUri): array {
+		$result = ['host' => null, 'port' => null];
+		$contactUri = trim((string)$contactUri);
+		if ($contactUri === '' || preg_match('/\s/', $contactUri)) {
+			return $result;
+		}
+
+		if (!preg_match('/[;?&]x-ast-orig-host=([^;?&#>\s]+)/', $contactUri, $matches)) {
+			return $result;
+		}
+
+		return $this->parseAddressHostPort(rawurldecode($matches[1]));
+	}
+
+	private function endpointAddressDetails(?string $contactUri, $sourceIp = null, $sourcePort = null): array {
+		$contactAddress = $this->parseContactUriAddress($contactUri);
+		$originalAddress = $this->parseContactUriOriginalHostAddress($contactUri);
+		$hasOriginalAddress = $originalAddress['host'] !== null || $originalAddress['port'] !== null;
+
+		$deviceAddress = $hasOriginalAddress ? $originalAddress : $contactAddress;
+		$networkAddress = $hasOriginalAddress ? $contactAddress : ['host' => null, 'port' => null];
+
+		if ($networkAddress['host'] === null && trim((string)$sourceIp) !== '') {
+			$networkAddress['host'] = $sourceIp;
+		}
+		if ($networkAddress['port'] === null && trim((string)$sourcePort) !== '') {
+			$networkAddress['port'] = $sourcePort;
+		}
+
+		return [
+			'device_ip' => $deviceAddress['host'],
+			'device_port' => $deviceAddress['port'],
+			'network_ip' => $networkAddress['host'],
+			'network_port' => $networkAddress['port'],
+		];
+	}
+
+	private function parseAddressHostPort(string $hostPort): array {
+		$result = ['host' => null, 'port' => null];
+		$hostPort = trim($hostPort, " \t\n\r\0\x0B<>");
+		if ($hostPort === '') {
+			return $result;
+		}
+
+		$host = null;
+		$port = null;
+		if (preg_match('/^\[([^\]]+)\](?::([0-9]+))?$/', $hostPort, $matches)) {
+			$host = trim($matches[1]);
+			$port = $matches[2] ?? null;
+		} elseif (substr_count($hostPort, ':') === 1 && preg_match('/^([^:]+):([0-9]+)$/', $hostPort, $matches)) {
+			$host = trim($matches[1]);
+			$port = $matches[2];
+		} elseif (substr_count($hostPort, ':') === 0) {
+			$host = $hostPort;
+		} else {
+			$host = $hostPort;
+		}
+
+		$host = trim((string)$host, " \t\n\r\0\x0B[]");
+		if ($host === '') {
+			return $result;
+		}
+		if (!filter_var($host, FILTER_VALIDATE_IP) && !preg_match('/^[A-Za-z0-9.-]+$/', $host)) {
+			return $result;
+		}
+
+		$result['host'] = $host;
+		if ($port !== null && ctype_digit((string)$port)) {
+			$portNumber = (int)$port;
+			if ($portNumber > 0 && $portNumber <= 65535) {
+				$result['port'] = $portNumber;
+			}
+		}
+
+		return $result;
+	}
+
 	private function isAsteriskStatus(string $value): bool {
 		return in_array(strtolower($value), ['avail', 'reachable', 'unavail', 'unavailable', 'unreachable', 'unknown', 'removed', 'nonqual'], true);
 	}
@@ -1075,6 +1163,8 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function statusRank(string $status): int {
+		$status = $this->normaliseState($status);
+
 		switch ($status) {
 			case self::STATUS_REACHABLE:
 				return 5;
@@ -1092,7 +1182,7 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function hadRegisteredState(string $status): bool {
-		return in_array($status, [
+		return in_array($this->normaliseState($status), [
 			self::STATUS_REACHABLE,
 			self::STATUS_UNREACHABLE,
 			self::STATUS_REGISTERED_NO_QUALIFY,
@@ -1100,7 +1190,7 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function historyReason(bool $previousHadContact, string $newStatus): string {
-		if ($newStatus === self::STATUS_NOT_REGISTERED && $previousHadContact) {
+		if ($this->normaliseState($newStatus) === self::STATUS_NOT_REGISTERED && $previousHadContact) {
 			return 'removed';
 		}
 
@@ -1247,17 +1337,27 @@ class Endpointmonitor implements \BMO {
 		try {
 			$debounceSeconds = min(self::ALERT_TIMING_MAX_SECONDS, max(0, (int)$settings['debounce_seconds']));
 			$cutoff = date('Y-m-d H:i:s', strtotime($now) - $debounceSeconds);
+			// Endpoint alerts are allowed only for fresh eligible transitions.
+			// The stale window is debounce_seconds plus 300 seconds, so old
+			// status-history rows cannot be replayed later after recipient or
+			// settings changes, while legitimate debounce delays still work.
+			$staleCutoff = date('Y-m-d H:i:s', strtotime($now) - ($debounceSeconds + self::ALERT_STALE_TRANSITION_MAX_SECONDS));
 			$stmt = $this->db()->prepare(
 				'SELECT h.id, h.extension, h.from_state, h.to_state, h.source, h.reason, h.contact_uri, h.latency_ms, h.created_at
 				FROM endpointmonitor_status_history h
+				JOIN endpointmonitor_endpoints e
+					ON e.extension = h.extension
 				WHERE h.source = :source
 					AND h.created_at <= :cutoff
+					AND h.created_at >= :stale_cutoff
+					AND e.enabled = 1
 				ORDER BY h.created_at ASC, h.id ASC
 				LIMIT 100'
 			);
 			$stmt->execute([
 				':source' => 'reconcile',
 				':cutoff' => $cutoff,
+				':stale_cutoff' => $staleCutoff,
 			]);
 
 			foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $transition) {
@@ -1267,7 +1367,7 @@ class Endpointmonitor implements \BMO {
 				}
 
 				foreach ($recipients as $recipient) {
-					if ($this->hasSentAlertForRecipient((int)$transition['id'], $recipient)) {
+					if ($this->hasRecordedAlertForRecipient((int)$transition['id'], $alertType, $recipient)) {
 						continue;
 					}
 
@@ -1313,8 +1413,8 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function alertTypeForTransition(array $transition, array $settings): ?string {
-		$from = (string)($transition['from_state'] ?? '');
-		$to = (string)$transition['to_state'];
+		$from = $this->normaliseState($transition['from_state'] ?? '');
+		$to = $this->normaliseState($transition['to_state'] ?? '');
 		if ($from === '' || $from === self::STATUS_UNKNOWN) {
 			return null;
 		}
@@ -1344,15 +1444,17 @@ class Endpointmonitor implements \BMO {
 		return null;
 	}
 
-        private function hasSentAlertForRecipient(int $historyId, string $recipient): bool {
+        private function hasRecordedAlertForRecipient(int $historyId, string $alertType, string $recipient): bool {
                 $stmt = $this->db()->prepare(
                         'SELECT COUNT(*)
                         FROM endpointmonitor_alert_history
                         WHERE history_id = :history_id
+                                AND alert_type = :alert_type
                                 AND recipient = :recipient'
                 );
                 $stmt->execute([
                         ':history_id' => $historyId,
+                        ':alert_type' => $alertType,
                         ':recipient' => $recipient,
                 ]);
 
@@ -1554,6 +1656,8 @@ class Endpointmonitor implements \BMO {
 				'source_port' => $endpoint['source_port'] ?? null,
 				'device_ip' => $endpoint['device_ip'] ?? null,
 				'device_port' => $endpoint['device_port'] ?? null,
+				'network_ip' => $endpoint['network_ip'] ?? null,
+				'network_port' => $endpoint['network_port'] ?? null,
 				'seen_by_asterisk' => $endpoint['seen_by_asterisk'] ?? null,
 				'user_agent' => $endpoint['user_agent'] ?? null,
 				'device_name' => $endpoint['device_name'] ?? null,
@@ -1781,9 +1885,15 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function withEndpointDisplayAddress(array $endpoint): array {
-		$contactAddress = $this->parseContactUriAddress($endpoint['contact_uri'] ?? null);
-		$endpoint['device_ip'] = $contactAddress['host'];
-		$endpoint['device_port'] = $contactAddress['port'];
+		$addressDetails = $this->endpointAddressDetails(
+			$endpoint['contact_uri'] ?? null,
+			$endpoint['source_ip'] ?? null,
+			$endpoint['source_port'] ?? null
+		);
+		$endpoint['device_ip'] = $addressDetails['device_ip'];
+		$endpoint['device_port'] = $addressDetails['device_port'];
+		$endpoint['network_ip'] = $addressDetails['network_ip'];
+		$endpoint['network_port'] = $addressDetails['network_port'];
 		$endpoint['seen_by_asterisk'] = $this->formatSeenByAsterisk(
 			$endpoint['source_ip'] ?? null,
 			$endpoint['source_port'] ?? null
@@ -1810,8 +1920,8 @@ class Endpointmonitor implements \BMO {
 
 	private function buildAlertEmail(array $transition, string $alertType): array {
 		$extension = (string)$transition['extension'];
-		$toState = (string)$transition['to_state'];
-		$subjectStatus = $toState;
+		$toState = $this->normaliseState($transition['to_state'] ?? '');
+		$subjectStatus = $this->stateLabel($toState);
 		if ($alertType === 'recovery') {
 			$subjectStatus = 'has recovered';
 		}
@@ -1825,23 +1935,32 @@ class Endpointmonitor implements \BMO {
 		$deviceName = trim((string)($endpointDetails['device_name'] ?? ''));
 		$firmwareVersion = trim((string)($endpointDetails['firmware_version'] ?? ''));
 		$userAgent = trim((string)($endpointDetails['user_agent'] ?? ''));
+		$historicalAddress = $toState === self::STATUS_NOT_REGISTERED;
+		$contactUriForAddress = $endpointDetails['contact_uri'] ?? null;
+		$sourceIpForAddress = $endpointDetails['source_ip'] ?? null;
+		$sourcePortForAddress = $endpointDetails['source_port'] ?? null;
+		if ($toState === self::STATUS_NOT_REGISTERED) {
+			$contactUriForAddress = $transition['contact_uri'] ?? null;
+		}
+		$addressDetails = $this->endpointAddressDetails($contactUriForAddress, $sourceIpForAddress, $sourcePortForAddress);
+		$addressPrefix = $historicalAddress ? 'Last ' : '';
 		$message = [
 			'EndPoint Monitor state change',
 			'',
-			'Endpoint: ' . $extension,
-			'Current state: ' . $toState,
+			'Extension: ' . $extension,
+			'New state: ' . $this->stateLabel($toState),
 			'Reason: ' . $this->reasonLabel($transition['reason'] ?? ''),
 			'Latency: ' . $latency,
 			'',
-			'Endpoint details',
 			'Device: ' . ($deviceName !== '' ? $deviceName : 'Unknown'),
 			'Version: ' . ($firmwareVersion !== '' ? $firmwareVersion : 'Unknown'),
-			'Device IP: ' . (($endpointDetails['device_ip'] ?? '') !== '' ? $endpointDetails['device_ip'] : 'Unknown'),
-			'Device Port: ' . (($endpointDetails['device_port'] ?? '') !== '' ? $endpointDetails['device_port'] : 'Unknown'),
+			$addressPrefix . 'Device IP: ' . (($addressDetails['device_ip'] ?? '') !== '' ? $addressDetails['device_ip'] : 'Unknown'),
+			$addressPrefix . 'Device Port: ' . (($addressDetails['device_port'] ?? '') !== '' ? $addressDetails['device_port'] : 'Unknown'),
+			$addressPrefix . 'Network IP: ' . (($addressDetails['network_ip'] ?? '') !== '' ? $addressDetails['network_ip'] : 'Unknown'),
+			$addressPrefix . 'Network Port: ' . (($addressDetails['network_port'] ?? '') !== '' ? $addressDetails['network_port'] : 'Unknown'),
 			'Contact expires: ' . (($endpointDetails['contact_expires_at'] ?? '') !== '' ? $endpointDetails['contact_expires_at'] : 'Unknown'),
 			'Qualify frequency: ' . (($endpointDetails['qualify_frequency'] ?? '') !== '' ? $endpointDetails['qualify_frequency'] . ' seconds' : 'Unknown'),
-			'Last checked: ' . (($endpointDetails['last_checked_at'] ?? '') !== '' ? $endpointDetails['last_checked_at'] : 'Unknown'),
-			'Time: ' . $transition['created_at'],
+			'Transition time: ' . $transition['created_at'],
 			'Source: Asterisk',
 			'',
 			'Please note: email deliveries can be delayed.',
@@ -2172,6 +2291,27 @@ class Endpointmonitor implements \BMO {
 		}
 
 		return $reason !== '' ? $reason : '-';
+	}
+
+	private function stateLabel(?string $state): string {
+		$state = $this->normaliseState($state);
+
+		return $state !== '' ? $state : '-';
+	}
+
+	private function normaliseState($state): string {
+		$state = trim((string)$state);
+
+		switch (strtolower($state)) {
+			case 'not_registered':
+			case 'not registered':
+				return self::STATUS_NOT_REGISTERED;
+			case 'registered_no_qualify':
+			case 'registered (no qualify)':
+				return self::STATUS_REGISTERED_NO_QUALIFY;
+		}
+
+		return $state;
 	}
 
 	private function now(): string {
