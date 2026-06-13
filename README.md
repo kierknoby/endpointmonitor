@@ -8,11 +8,11 @@ Patch release: 1.1.1, released on 13 June 2026.
 
 Patch release from 1.1.0 to 1.1.1 on 13 June 2026 by kierknoby
 
-Fixes stale endpoint alert backlog replay by only sending alerts for fresh post-debounce transitions, requiring endpoint alert candidates to still be selected, aligning duplicate alert checks with alert type, updating alert email wording to describe the transition rather than presenting old history as current status, showing Device and Network address details while preserving last-known address details for Not Registered alerts where available, tidy history table display labels, and displaying endpoint card contact expiry as a compact countdown.
+Fixes stale EndPoint alert backlog replay by only sending alerts for fresh post-debounce transitions, requiring EndPoint alert candidates to still be selected, aligning duplicate alert checks with alert type, updating alert email wording to describe the transition rather than presenting old history as current status, showing Device and Network address details while preserving last-known address details for Not Registered alerts where available, tidy history table display labels, clean up EndPoint display wording, improve mobile history and endpoint layouts, and displaying EndPoint card contact expiry as a compact countdown.
 
 Minor release from 1.0.1 to 1.1.0 on 12 June 2026 by kierknoby
 
-Adds configurable Status History and Alert History pruning with Never, Hourly, Daily, Monthly, and Yearly policies, adds confirmed single-row history deletion, makes initial page rendering and endpoint map auto-refresh read-only, adds module-owned session CSRF protection for AJAX, caps alert timing fields to 0-86400 seconds, improves pruning Apply/Active UI, improves responsive history controls, adds friendlier history labels, corrects endpoint address display by deriving Device IP and Device Port from the SIP Contact URI, and removes misleading/noisy Asterisk source details from default endpoint and alert output.
+Adds configurable Status History and Alert History pruning with Never, Hourly, Daily, Monthly, and Yearly policies, adds confirmed single-row history deletion, makes initial page rendering and EndPoint map auto-refresh read-only, adds module-owned session CSRF protection for AJAX, caps alert timing fields to 0-86400 seconds, improves pruning Apply/Active UI, improves responsive history controls, adds friendlier history labels, corrects EndPoint address display by deriving Device IP and Device Port from the SIP Contact URI, and removes misleading/noisy Asterisk source details from default EndPoint and alert output.
 
 Patch release from 1.0.0 to 1.0.1 on 11 June 2026 by kierknoby
 
@@ -28,10 +28,10 @@ Use with FreePBX/PBXact 17 only. DO NOT install on FreePBX/PBXact 16 and below.
 ## Overview
 
 EndPoint Monitor discovers FreePBX PJSIP extensions, lets administrators enable
-or disable monitoring per endpoint, and shows the latest contact status after
+or disable monitoring per EndPoint, and shows the latest contact status after
 manual or scheduled reconciliation.
 
-The module provides endpoint discovery, current status visibility, transition
+The module provides EndPoint discovery, current status visibility, transition
 history, and email alert attempts from reconciliation-created state changes.
 Scheduled background reconciliation is handled by the FreePBX Job system. The
 module does not install a daemon, systemd unit, AMI event listener, or custom
@@ -91,7 +91,7 @@ The module appears under **Admin > EndPoint Monitor**.
 
 Do not uninstall the module when updating. Uninstalling removes the module tables.
 
-A normal update keeps the existing EndPoint Monitor database tables, settings, monitored endpoints, status history, and alert history.
+A normal update keeps the existing EndPoint Monitor database tables, settings, monitored EndPoints, status history, and alert history.
 
 ### Check the installed version
 
@@ -155,21 +155,21 @@ After updating, check the installed version again:
 fwconsole ma list | grep -i endpointmonitor
 ```
 
-Then open **Admin > EndPoint Monitor** and confirm existing endpoints, settings, and history are still present.
+Then open **Admin > EndPoint Monitor** and confirm existing EndPoints, settings, and history are still present.
 
 ## Architecture
 
 EndPoint Monitor has four current paths:
 
 1. **Discovery path** reads local FreePBX PJSIP extension/device data and keeps
-   `endpointmonitor_endpoints` aligned with discovered endpoints.
+   `endpointmonitor_endpoints` aligned with discovered EndPoints.
 2. **Reconciliation path** runs a read-only Asterisk manager command for
    current PJSIP contact state, updates the latest snapshot, and writes
    transition rows when state changes.
 3. **Alert path** classifies reconciliation-created transitions, applies
    debounce and repeat suppression, sends email through FreePBX mail support,
    and records alert history.
-4. **Admin page path** renders the endpoint status map, monitored endpoint
+4. **Admin page path** renders the EndPoint status map, monitored EndPoint
    toggles, alert settings, status history, and alert history.
 
 Scheduled reconciliation is registered through the FreePBX Job system. FreePBX
@@ -244,7 +244,7 @@ Logging improvements:
 
 Backup/restore:
 
-* Settings and endpoint monitoring configuration are backed up and restored via
+* Settings and EndPoint monitoring configuration are backed up and restored via
   upsert logic.
 * Status and alert history are currently **not** backed up to avoid duplicating
   operational records during restore.
@@ -254,14 +254,14 @@ Backup/restore:
 
 Admin UI:
 
-* Monitored endpoints can have short admin notes of up to 48 characters, saved inline with a timestamp.
+* Monitored EndPoints can have short admin notes of up to 48 characters, saved inline with a timestamp.
 * Show selection is saved as a module setting and applies to the map and history tables.
 * History pruning policies default to Never. Hourly, Daily, Monthly, and Yearly
   pruning, plus single-row history deletion, permanently delete matching history
   rows after explicit administrator confirmation.
-* Endpoint Status Map shows a limited tile view by default, with Show options for
+* EndPoint Status Map shows a limited tile view by default, with Show options for
   6, 30, 60, 120, and All.
-* Endpoint detail displays device IP, device port, network IP, network port,
+* EndPoint detail displays device IP, device port, network IP, network port,
   device, version, contact expiry, qualify frequency, and latency where available.
 * Temporary action messages appear as fading overlay messages so they remain visible on long pages.
 * Warning banners appear where alert configuration cannot support delivery.
@@ -271,8 +271,8 @@ Admin UI:
 Discovery is PJSIP-extension focused.
 
 * Primary source: FreePBX `devices` rows with `tech = 'pjsip'`.
-* Fallback source: FreePBX `users` rows with matching PJSIP endpoint objects.
-* A matching PJSIP endpoint object is required.
+* Fallback source: FreePBX `users` rows with matching PJSIP EndPoint objects.
+* A matching PJSIP EndPoint object is required.
 * Trunk-only PJSIP objects are intentionally excluded.
 * Virtual/non-PJSIP extensions are intentionally excluded.
 
@@ -289,10 +289,10 @@ Current states:
 * Unknown
 
 `Registered (No Qualify)` means Asterisk has a contact but qualify/RTT data is
-not available. The UI shows RTT as unavailable rather than treating the endpoint
+not available. The UI shows RTT as unavailable rather than treating the EndPoint
 as unknown.
 
-`Removed` is not used as a current state. When an endpoint previously had a
+`Removed` is not used as a current state. When an EndPoint previously had a
 contact or registered/reachable state and reconciliation finds no contact, the
 current state becomes `Not Registered` and the transition reason is shown as
 Contact removed.
@@ -305,7 +305,7 @@ The admin page shows the most recent transitions.
 Reconciliation writes history rows with:
 
 * `source = Asterisk`
-* Contact removed when a previously contacted/registered endpoint becomes
+* Contact removed when a previously contacted/registered EndPoint becomes
   `Not Registered`
 * Status changed for other state changes
 
@@ -333,25 +333,25 @@ Alertable transitions:
 * Unreachable or Not Registered to Reachable
 * Unreachable or Not Registered to Registered (No Qualify)
 
-Endpoint alert candidates are limited to fresh post-debounce transitions so old
+EndPoint alert candidates are limited to fresh post-debounce transitions so old
 status-history rows are not replayed later after recipient or settings changes.
 
-First baseline transitions from Unknown are suppressed. If an endpoint recovers
+First baseline transitions from Unknown are suppressed. If an EndPoint recovers
 to Registered (No Qualify), the email notes that qualify is disabled and RTT is
 unavailable.
 
 Alert emails include a reminder that email delivery can be delayed and that
 current status should be checked in the FreePBX module.
 
-Endpoint alert emails show both Device and Network address details where
+EndPoint alert emails show both Device and Network address details where
 available. When the SIP Contact URI includes the original host, Device IP and
-Device Port are derived from that endpoint-advertised address. Network IP and
+Device Port are derived from that EndPoint-advertised address. Network IP and
 Network Port are derived from the SIP Contact URI address used for the
 registration path, falling back to registrar metadata where available.
 
 For Not Registered / Contact removed alerts, the module uses historical labels,
 such as Last Device IP, Last Device Port, Last Network IP, and Last Network
-Port, because the endpoint is no longer currently registered. Unknown is shown
+Port, because the EndPoint is no longer currently registered. Unknown is shown
 only when no useful current or historical address is available.
 
 Alert decisions are recorded per transition, alert type, and recipient. The
@@ -380,7 +380,7 @@ mail system.
 
 ## Database Tables
 
-`endpointmonitor_endpoints` stores discovered endpoints, monitoring toggles, and
+`endpointmonitor_endpoints` stores discovered EndPoints, monitoring toggles, and
 the latest status snapshot.
 
 `endpointmonitor_status_history` stores transition rows:
@@ -463,7 +463,7 @@ permanent architecture decision.
 ## Future Design Notes
 
 * Keep MVP PJSIP only.
-* Continue monitoring selected endpoints/extensions.
+* Continue monitoring selected EndPoints/extensions.
 * Add AMI ContactStatus ingestion when the snapshot/history/alert behaviour is
   stable.
 * Add maintenance windows.

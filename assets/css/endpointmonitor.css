@@ -129,6 +129,7 @@
 	gap: 8px;
 	margin-bottom: 6px;
 	font-weight: 600;
+	overflow-wrap: anywhere;
 }
 
 .endpointmonitor .em-led {
@@ -246,6 +247,174 @@
         display: block;
         min-height: 18px;
         margin-top: 4px;
+}
+
+@media (max-width: 767px) {
+	.endpointmonitor {
+		overflow-x: hidden;
+	}
+
+	.endpointmonitor .panel-body {
+		padding-left: 10px;
+		padding-right: 10px;
+	}
+
+	.endpointmonitor .em-endpoint-map {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 10px;
+	}
+
+	.endpointmonitor .em-map-tile {
+		min-width: 0;
+		min-height: 0;
+		padding: 10px;
+	}
+
+	.endpointmonitor .em-map-detail,
+	.endpointmonitor .em-map-description,
+	.endpointmonitor .em-map-status {
+		font-size: 13px;
+		overflow-wrap: anywhere;
+	}
+
+	.endpointmonitor .em-endpoints-wrap,
+	.endpointmonitor .em-history-wrap,
+	.endpointmonitor .em-alert-history-wrap {
+		border: 0;
+		margin-bottom: 0;
+		overflow-x: visible;
+	}
+
+	.endpointmonitor .em-endpoints,
+	.endpointmonitor .em-history,
+	.endpointmonitor .em-alert-history,
+	.endpointmonitor .em-endpoints thead,
+	.endpointmonitor .em-history thead,
+	.endpointmonitor .em-alert-history thead,
+	.endpointmonitor .em-endpoints tbody,
+	.endpointmonitor .em-history tbody,
+	.endpointmonitor .em-alert-history tbody,
+	.endpointmonitor .em-endpoints tr,
+	.endpointmonitor .em-history tr,
+	.endpointmonitor .em-alert-history tr,
+	.endpointmonitor .em-endpoints td,
+	.endpointmonitor .em-history td,
+	.endpointmonitor .em-alert-history td {
+		display: block;
+		width: 100%;
+	}
+
+	.endpointmonitor .em-endpoints,
+	.endpointmonitor .em-history,
+	.endpointmonitor .em-alert-history {
+		border-collapse: separate;
+		border-spacing: 0;
+	}
+
+	.endpointmonitor .em-endpoints thead,
+	.endpointmonitor .em-history thead,
+	.endpointmonitor .em-alert-history thead {
+		display: none;
+	}
+
+	.endpointmonitor .em-endpoints tr,
+	.endpointmonitor .em-history tr,
+	.endpointmonitor .em-alert-history tr {
+		margin: 0 0 10px 0;
+		padding: 10px;
+		border: 1px solid #ddd;
+		border-radius: 4px;
+		background: #fff;
+	}
+
+	.endpointmonitor .em-endpoints.table-striped > tbody > tr:nth-of-type(odd),
+	.endpointmonitor .em-history.table-striped > tbody > tr:nth-of-type(odd),
+	.endpointmonitor .em-alert-history.table-striped > tbody > tr:nth-of-type(odd) {
+		background-color: #fff;
+	}
+
+	.endpointmonitor .em-endpoints td,
+	.endpointmonitor .em-history td,
+	.endpointmonitor .em-alert-history td {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 5px 0;
+		border-top: 0;
+		font-size: 13px;
+		white-space: normal;
+		overflow-wrap: anywhere;
+		word-break: normal;
+	}
+
+	.endpointmonitor .em-endpoints td::before,
+	.endpointmonitor .em-history td::before,
+	.endpointmonitor .em-alert-history td::before {
+		content: attr(data-label);
+		flex: 0 0 92px;
+		max-width: 42%;
+		color: #555;
+		font-weight: 600;
+	}
+
+	.endpointmonitor .em-endpoints td:nth-child(2),
+	.endpointmonitor .em-history td:nth-child(2),
+	.endpointmonitor .em-alert-history td:nth-child(2) {
+		display: block;
+		order: -2;
+		padding-bottom: 8px;
+		font-size: 15px;
+		font-weight: 600;
+	}
+
+	.endpointmonitor .em-endpoints td:nth-child(2)::before,
+	.endpointmonitor .em-history td:nth-child(2)::before,
+	.endpointmonitor .em-alert-history td:nth-child(2)::before {
+		content: none;
+	}
+
+	.endpointmonitor .em-endpoints td:nth-child(3) {
+		display: block;
+		order: -1;
+		padding-bottom: 8px;
+		color: #555;
+	}
+
+	.endpointmonitor .em-endpoints td:nth-child(3)::before {
+		content: none;
+	}
+
+	.endpointmonitor .em-endpoints td:nth-child(4),
+	.endpointmonitor .em-alert-history td:nth-child(5),
+	.endpointmonitor .em-alert-history td:nth-child(7) {
+		display: block;
+	}
+
+	.endpointmonitor .em-endpoints td:nth-child(4)::before,
+	.endpointmonitor .em-alert-history td:nth-child(5)::before,
+	.endpointmonitor .em-alert-history td:nth-child(7)::before {
+		display: block;
+		margin-bottom: 3px;
+		max-width: none;
+	}
+
+	.endpointmonitor .em-endpoint-notes {
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+	}
+
+	.endpointmonitor .em-alert-history td,
+	.endpointmonitor .em-history td {
+		word-break: break-word;
+	}
+
+	.endpointmonitor .em-delete-status-history,
+	.endpointmonitor .em-delete-alert-history {
+		min-width: 36px;
+		min-height: 32px;
+	}
 }
 
 

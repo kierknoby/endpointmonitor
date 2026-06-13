@@ -271,14 +271,14 @@ class Endpointmonitor implements \BMO {
 
 			return [
 				'status' => $data['refreshError'] === '',
-				'message' => $data['refreshError'] === '' ? _('Endpoint status refreshed.') : $data['refreshError'],
+				'message' => $data['refreshError'] === '' ? _('EndPoint status refreshed.') : $data['refreshError'],
 				'endpoints' => $data['endpoints'],
 				'statusHistory' => $data['statusHistory'],
 				'alertHistory' => $data['alertHistory'],
 				'lastRefresh' => $data['lastRefresh'],
 			];
 		} catch (\Exception $e) {
-			$message = _('Failed to refresh endpoint status. Please check the system logs.');
+			$message = _('Failed to refresh EndPoint status. Please check the system logs.');
 			$this->logError('Refresh failed: ' . $e->getMessage());
 			return ['status' => false, 'message' => $message];
 		}
@@ -289,7 +289,7 @@ class Endpointmonitor implements \BMO {
 		$enabled = !empty($_REQUEST['enabled']) ? 1 : 0;
 
 		if ($extension === '') {
-			return ['status' => false, 'message' => _('Missing endpoint.')];
+			return ['status' => false, 'message' => _('Missing EndPoint.')];
 		}
 
 		$this->syncDiscoveredEndpoints();
@@ -303,7 +303,7 @@ class Endpointmonitor implements \BMO {
 
 		return [
 			'status' => true,
-			'message' => $enabled ? _('Endpoint selected.') : _('Endpoint selection cleared.'),
+			'message' => $enabled ? _('EndPoint selected.') : _('EndPoint selection cleared.'),
 			'endpoint' => $extension,
 			'enabled' => $enabled,
 		];
@@ -314,7 +314,7 @@ class Endpointmonitor implements \BMO {
 		$notes = isset($_REQUEST['notes']) ? (string)$_REQUEST['notes'] : '';
 
 		if ($extension === '') {
-			return ['status' => false, 'message' => _('Missing endpoint.')];
+			return ['status' => false, 'message' => _('Missing EndPoint.')];
 		}
 
 		$notes = trim(preg_replace('/\s+/', ' ', $notes));
@@ -343,7 +343,7 @@ class Endpointmonitor implements \BMO {
 
 		return [
 			'status' => true,
-			'message' => $notes === '' ? _('Endpoint note cleared.') : _('Endpoint note saved.'),
+			'message' => $notes === '' ? _('EndPoint note cleared.') : _('EndPoint note saved.'),
 			'extension' => $extension,
 			'notes' => $notes,
 			'notes_updated_at' => $notesUpdatedAt,
@@ -504,7 +504,7 @@ class Endpointmonitor implements \BMO {
 			$this->logWarning('Endpoint map retrieval failed: ' . $e->getMessage());
 			return [
 				'status' => false,
-				'message' => _('Unable to load endpoint map.'),
+				'message' => _('Unable to load EndPoint map.'),
 				'endpoints' => [],
 			];
 		}
@@ -612,7 +612,7 @@ class Endpointmonitor implements \BMO {
 				$this->reconcileCurrentStatus();
 			} catch (\Exception $e) {
 				$this->logError('Status reconciliation failed: ' . $e->getMessage());
-				$refreshError = _('Unable to reconcile endpoint status. Please check the system logs.');
+				$refreshError = _('Unable to reconcile EndPoint status. Please check the system logs.');
 			}
 		}
 
@@ -1946,7 +1946,6 @@ class Endpointmonitor implements \BMO {
 			'Reason: ' . $this->reasonLabel($transition['reason'] ?? ''),
 			'Latency: ' . $latency,
 			'',
-			'Endpoint details',
 			'Device: ' . ($deviceName !== '' ? $deviceName : 'Unknown'),
 			'Version: ' . ($firmwareVersion !== '' ? $firmwareVersion : 'Unknown'),
 			$addressPrefix . 'Device IP: ' . (($addressDetails['device_ip'] ?? '') !== '' ? $addressDetails['device_ip'] : 'Unknown'),

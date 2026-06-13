@@ -17,8 +17,8 @@
 			'not registered': 'Not Registered',
 			registered_no_qualify: 'Registered (No Qualify)',
 			'registered (no qualify)': 'Registered (No Qualify)',
-			status_change: 'Status changed',
-			'status changed': 'Status changed',
+			status_change: 'Status Change',
+			'status changed': 'Status Change',
 			removed: 'Contact removed',
 			'contact removed': 'Contact removed',
 			sent: 'Sent',
@@ -117,14 +117,14 @@
 			var id = parseInt(entry.id, 10) || 0;
 			rows.push(
 				'<tr data-history-id="' + id + '">' +
-					'<td>' + escapeHtml(entry.created_at) + '</td>' +
-					'<td>' + escapeHtml(entry.extension) + '</td>' +
-					'<td>' + escapeHtml(displayLabel(entry.from_state)) + '</td>' +
-					'<td>' + escapeHtml(displayLabel(entry.to_state)) + '</td>' +
-					'<td>' + escapeHtml(displayLabel(entry.source)) + '</td>' +
-					'<td>' + escapeHtml(displayLabel(entry.reason)) + '</td>' +
-					'<td>' + latency + '</td>' +
-					'<td><button type="button" class="btn btn-xs btn-danger em-delete-status-history" data-history-id="' + id + '" title="Delete Status History row"><i class="fa fa-trash"></i></button></td>' +
+					'<td data-label="Time">' + escapeHtml(entry.created_at) + '</td>' +
+					'<td data-label="EndPoint">' + escapeHtml(entry.extension) + '</td>' +
+					'<td data-label="From">' + escapeHtml(displayLabel(entry.from_state)) + '</td>' +
+					'<td data-label="To">' + escapeHtml(displayLabel(entry.to_state)) + '</td>' +
+					'<td data-label="Source">' + escapeHtml(displayLabel(entry.source)) + '</td>' +
+					'<td data-label="Reason">' + escapeHtml(displayLabel(entry.reason)) + '</td>' +
+					'<td data-label="Latency">' + latency + '</td>' +
+					'<td data-label="Actions"><button type="button" class="btn btn-xs btn-danger em-delete-status-history" data-history-id="' + id + '" title="Delete Status History row"><i class="fa fa-trash"></i></button></td>' +
 				'</tr>'
 			);
 		});
@@ -141,14 +141,14 @@
 			var id = parseInt(entry.id, 10) || 0;
 			rows.push(
 				'<tr data-history-id="' + id + '">' +
-					'<td>' + escapeHtml(entry.sent_at) + '</td>' +
-					'<td>' + escapeHtml(entry.extension) + '</td>' +
-					'<td>' + escapeHtml(displayLabel(entry.alert_type)) + '</td>' +
-					'<td>' + escapeHtml(displayLabel(entry.status)) + '</td>' +
-					'<td>' + escapeHtml(entry.recipient) + '</td>' +
-					'<td>' + escapeHtml(displayLabel(entry.result)) + '</td>' +
-					'<td>' + escapeHtml(entry.error) + '</td>' +
-					'<td><button type="button" class="btn btn-xs btn-danger em-delete-alert-history" data-history-id="' + id + '" title="Delete Alert History row"><i class="fa fa-trash"></i></button></td>' +
+					'<td data-label="Time">' + escapeHtml(entry.sent_at) + '</td>' +
+					'<td data-label="EndPoint">' + escapeHtml(entry.extension) + '</td>' +
+					'<td data-label="Type">' + escapeHtml(displayLabel(entry.alert_type)) + '</td>' +
+					'<td data-label="Status">' + escapeHtml(displayLabel(entry.status)) + '</td>' +
+					'<td data-label="Recipient">' + escapeHtml(entry.recipient) + '</td>' +
+					'<td data-label="Result">' + escapeHtml(displayLabel(entry.result)) + '</td>' +
+					'<td data-label="Error">' + escapeHtml(entry.error) + '</td>' +
+					'<td data-label="Actions"><button type="button" class="btn btn-xs btn-danger em-delete-alert-history" data-history-id="' + id + '" title="Delete Alert History row"><i class="fa fa-trash"></i></button></td>' +
 				'</tr>'
 			);
 		});
@@ -214,15 +214,15 @@
 			}).done(function (response) {
 				if (!response || !response.status) {
 					input.prop('checked', !enabled);
-					showMessage(response && response.message ? response.message : 'Unable to save endpoint setting.', 'error');
+					showMessage(response && response.message ? response.message : 'Unable to save EndPoint setting.', 'error');
 				} else {
-					showMessage(response.message || 'Endpoint setting saved.', 'success');
+					showMessage(response.message || 'EndPoint setting saved.', 'success');
 				}
 				setToggleText(input);
 			}).fail(function () {
 				input.prop('checked', !enabled);
 				setToggleText(input);
-				showMessage('Unable to save endpoint setting.', 'error');
+				showMessage('Unable to save EndPoint setting.', 'error');
 			}).always(function () {
 				input.prop('disabled', false);
 			});
@@ -243,7 +243,7 @@
 			refreshInFlight = true;
 			button.prop('disabled', true).addClass('disabled');
 			if (!isAutomatic) {
-				showMessage('Refreshing endpoint status.', 'info');
+				showMessage('Refreshing EndPoint status.', 'info');
 			}
 			$.ajax({
 				url: 'ajax.php?module=endpointmonitor',
@@ -255,7 +255,7 @@
 				}
 			}).done(function (response) {
 				if (!response || !response.status) {
-					showMessage(response && response.message ? response.message : 'Unable to refresh endpoint status.', 'error');
+					showMessage(response && response.message ? response.message : 'Unable to refresh EndPoint status.', 'error');
 					return;
 				}
 				renderStatusRows(response.endpoints);
@@ -269,10 +269,10 @@
 					renderAlertHistoryRows(response.alertHistory);
 				}
 				if (!isAutomatic) {
-					showMessage(response.message || 'Endpoint status refreshed.', 'success');
+					showMessage(response.message || 'EndPoint status refreshed.', 'success');
 				}
 			}).fail(function () {
-				showMessage('Unable to refresh endpoint status.', 'error');
+				showMessage('Unable to refresh EndPoint status.', 'error');
 			}).always(function () {
 				refreshInFlight = false;
 				button.prop('disabled', false).removeClass('disabled');
@@ -696,7 +696,7 @@
 
 	        function installTableControls() {
 	                [
-	                        ['monitored', 'Monitored Endpoints'],
+	                        ['monitored', 'Monitored EndPoints'],
 	                        ['status-history', 'Status History'],
 	                        ['alert-history', 'Alert History']
                 ].forEach(function(item) {
@@ -745,7 +745,7 @@
         }
 
         function applyAllLimits(triggerMapChange) {
-                ['Monitored Endpoints', 'Status History', 'Alert History'].forEach(function(title) {
+                ['Monitored EndPoints', 'Status History', 'Alert History'].forEach(function(title) {
                         var $panel = panelByTitle(title);
                         if ($panel.length) {
                                 applyTableLimit($panel);
