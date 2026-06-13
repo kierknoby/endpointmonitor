@@ -492,12 +492,14 @@ class Endpointmonitor implements \BMO {
 	}
 
 	private function handleGetTopology(): array {
-		// Endpoint map read-only action: returns stored endpoint status only.
+		// Read-only action: returns stored endpoint, status-history, and alert-history data only.
 		// Do not trigger discovery, reconciliation, history writes, or alerts here.
 		try {
 			return [
 				'status' => true,
 				'endpoints' => $this->getEndpointMapRows(),
+				'statusHistory' => $this->getStatusHistory(),
+				'alertHistory' => $this->getAlertHistory(),
 				'timestamp' => $this->now(),
 			];
 		} catch (\Exception $e) {
@@ -506,6 +508,8 @@ class Endpointmonitor implements \BMO {
 				'status' => false,
 				'message' => _('Unable to load EndPoint map.'),
 				'endpoints' => [],
+				'statusHistory' => [],
+				'alertHistory' => [],
 			];
 		}
 	}
