@@ -13,7 +13,7 @@ namespace FreePBX\modules;
 class Registrationwatch implements \BMO {
 
 	/** Fallback only. Authoritative version lives in module.xml. */
-	const VERSION = '1.4.2';
+	const VERSION = '1.4.3';
 
 	const STATUS_REACHABLE = 'Reachable';
 	const STATUS_UNREACHABLE = 'Unreachable';
@@ -4650,23 +4650,22 @@ class Registrationwatch implements \BMO {
 				return ['status' => false, 'message' => 'CI_Email is not available.'];
 			}
 
-			$from = $this->getNotificationFromAddress();
-			if ($from === '') {
+			$from = $this->resolveNotificationFrom();
+			if ($from['address'] === '') {
 				return ['status' => false, 'message' => 'Email "From:" Address is not configured in Advanced Settings.'];
 			}
-			$senderName = $this->getNotificationSenderName();
 
 			$email = new \CI_Email();
 			if ($this->emailFromSupportsReturnPath($email)) {
-				$email->from($from, $senderName, $from);
+				$email->from($from['address'], $from['name'], $from['address']);
 			} else {
-				$email->from($from, $senderName);
+				$email->from($from['address'], $from['name']);
 				if (method_exists($email, 'set_header')) {
-					$email->set_header('Return-Path', $from);
+					$email->set_header('Return-Path', $from['address']);
 				}
 			}
 			if (method_exists($email, 'reply_to')) {
-				$email->reply_to($from, $senderName);
+				$email->reply_to($from['address'], $from['name']);
 			}
 			$email->to($recipient);
 			$email->subject($subject);
@@ -4691,47 +4690,62 @@ class Registrationwatch implements \BMO {
 		}
 	}
 
-	private function getNotificationFromAddress(): string {
-		if (method_exists($this, 'fetchFromEmail')) {
-			$email = $this->normaliseEmailAddress((string)$this->fetchFromEmail());
-			if ($email !== '') {
-				return $email;
-			}
-		}
+	private function getConfiguredNotificationFrom(): string {
+		return $this->getFreePBXConfigValue('AMPUSERMANEMAILFROM');
+	}
 
+	private function getFreePBXConfigValue(string $key): string {
 		try {
-			$email = $this->normaliseEmailAddress((string)\FreePBX::Config()->get('AMPUSERMANEMAILFROM'));
-			if ($email !== '') {
-				return $email;
+			if (isset($this->FreePBX->Config)) {
+				return (string)$this->FreePBX->Config->get($key);
 			}
-		} catch (\Exception $e) {
+			if (method_exists($this->FreePBX, 'Config')) {
+				return (string)$this->FreePBX->Config()->get($key);
+			}
+		} catch (\Throwable $e) {
 			// Fall through and fail safely rather than guessing a sender domain.
 		}
 
 		return '';
 	}
 
-	private function normaliseEmailAddress(string $value): string {
-		$value = trim($value);
-		if ($value === '') {
-			return '';
+	private function resolveNotificationFrom(): array {
+		$resolved = $this->parseNotificationFrom($this->getConfiguredNotificationFrom());
+		if ($resolved['address'] !== '' && $resolved['name'] === '') {
+			$resolved['name'] = $this->getNotificationSenderNameFallback();
 		}
 
-		if (preg_match('/<([^>]+)>/', $value, $matches)) {
-			$value = trim($matches[1]);
-		}
-
-		return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : '';
+		return $resolved;
 	}
 
-	private function getNotificationSenderName(): string {
-		try {
-			$brand = (string)\FreePBX::Config()->get('DASHBOARD_FREEPBX_BRAND');
-			if ($brand !== '') {
-				return $brand;
+	private function parseNotificationFrom(string $value): array {
+		$value = trim($value);
+		$invalid = ['address' => '', 'name' => ''];
+		if ($value === '' || preg_match('/[\r\n]/', $value)) {
+			return $invalid;
+		}
+
+		$name = '';
+		$address = $value;
+		if (strpos($value, '<') !== false || strpos($value, '>') !== false) {
+			if (!preg_match('/^(?:([^<>]+?)\s*)?<([^<>]+)>$/', $value, $matches)) {
+				return $invalid;
 			}
-		} catch (\Exception $e) {
-			// Keep Registration Watch as the sender name fallback.
+			$name = isset($matches[1]) ? trim($matches[1]) : '';
+			$address = trim($matches[2]);
+		}
+
+		if (!filter_var($address, FILTER_VALIDATE_EMAIL)) {
+			return $invalid;
+		}
+
+		return ['address' => $address, 'name' => $name];
+	}
+
+	private function getNotificationSenderNameFallback(): string {
+		$brand = trim($this->getFreePBXConfigValue('DASHBOARD_FREEPBX_BRAND'));
+		if ($brand !== '') {
+			return $brand;
 		}
 
 		return 'Registration Watch';
@@ -4946,9 +4960,11 @@ class Registrationwatch implements \BMO {
 	private function getEmailStatus(): array {
 		$settings = $this->getAlertSettings();
 		$recipients = $this->normaliseRecipients($settings['alert_recipients']);
+		$from = $this->resolveNotificationFrom();
 
 		return [
 			'ci_email_available' => class_exists('\CI_Email'),
+			'from_address_configured' => $from['address'] !== '',
 			'alerts_enabled' => $settings['alert_enabled'] === '1',
 			'recipients_configured' => count($recipients) > 0,
 			'recipient_count' => count($recipients),

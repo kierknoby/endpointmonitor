@@ -1,4 +1,4 @@
-# Registration Watch 1.4.2 for FreePBX 16 and 17
+# Registration Watch 1.4.3 for FreePBX 16 and 17
 
 Registration Watch (`registrationwatch`) watches PJSIP registration state in
 FreePBX/PBXact 16 and 17. It discovers configured FreePBX PJSIP devices and tracks
@@ -31,7 +31,7 @@ falls back to a sensible `unknown system` label instead of failing email deliver
 
 ## Release Status
 
-Registration Watch 1.4.2 is the current release for FreePBX 16 and 17.
+Registration Watch 1.4.3 is the current release for FreePBX 16 and 17.
 
 Use the `main` branch for stable releases. Development and release-candidate
 branches may contain incomplete or test-only changes.
@@ -49,6 +49,12 @@ Use with FreePBX/PBXact 16 or 17.
 * FreePBX Job runner enabled for scheduled background checks
 * FreePBX mail support configured if alert email delivery is required
 * Email "From:" Address set in Advanced Settings (alerts will not send without it)
+
+Advanced Settings → Email "From:" Address supports either a bare address such
+as `asterisk@demodomain.name` or a display name and address such as
+`PBX-123 <asterisk@demodomain.name>`. An explicitly configured display name is
+preserved as the email sender name. A bare address continues to use the existing
+sender name, falling back to `Registration Watch` if none is configured.
 
 ## Installing
 
@@ -209,7 +215,7 @@ ambiguous. The documented procedure uses `git reset --hard origin/main` to avoid
 that ambiguity.
 
 Rerun the documented GitHub update and verify the version again. Do not proceed
-to signature troubleshooting until module.xml reports `1.4.2`.
+to signature troubleshooting until module.xml reports `1.4.3`.
 
 #### `git fetch origin` cannot find a remote branch
 
@@ -276,7 +282,7 @@ grep -m1 '<version>' /var/www/html/admin/modules/registrationwatch/module.xml
 ### Signature warnings after updating an older unsigned release
 
 Some existing installations upgraded from an older unsigned Registration Watch
-release may initially show a signature warning even though 1.4.2 has been
+release may initially show a signature warning even though 1.4.3 has been
 installed.
 
 #### Module is Unsigned
@@ -298,7 +304,7 @@ grep -m1 '<version>' /var/www/html/admin/modules/registrationwatch/module.xml
 ls -l /var/www/html/admin/modules/registrationwatch/module.sig
 ```
 
-If the version is not `1.4.2`, this is an update problem rather than a signature
+If the version is not `1.4.3`, this is an update problem rather than a signature
 problem.
 
 #### Signed by unknown or untrusted key
@@ -589,6 +595,7 @@ php -l install.php
 php -l uninstall.php
 php -l views/main.php
 php -r '$xml = simplexml_load_file("module.xml"); echo $xml ? "module.xml parsed\n" : "module.xml failed\n";'
+php tests/email_from_contract.php
 php tests/history_pagination_contract.php
 php tests/repeat_alerting_contract.php
 php tests/reset_from_asterisk_contract.php
@@ -616,6 +623,17 @@ fwconsole reload
 ```
 
 ## Release History
+
+### 1.4.3, patch release, 10 September 2026
+
+Released by `@kierknoby, Kieran Knowles-Byrne // FreePBX UK`.
+
+This patch fixes GitHub issue #17 by using one consistent path to retrieve,
+parse, validate, and apply Advanced Settings → Email "From:" Address for test
+emails and every alert type. Bare addresses retain the existing sender-name
+fallback, while values such as `PBX-123 <asterisk@example.com>` preserve the
+explicit display name. Malformed values continue to fail safely and the
+extracted address must pass normal email-address validation.
 
 ### 1.4.2, patch release, 3 September 2026
 
