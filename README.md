@@ -52,9 +52,10 @@ Use with FreePBX/PBXact 16 or 17.
 
 Advanced Settings → Email "From:" Address supports either a bare address such
 as `asterisk@demodomain.name` or a display name and address such as
-`PBX-123 <asterisk@demodomain.name>`. An explicitly configured display name is
-preserved as the email sender name. A bare address continues to use the existing
-sender name, falling back to `Registration Watch` if none is configured.
+`PBX-123 <asterisk@demodomain.name>`, if supported by your FreePBX version.
+An explicitly configured display name is preserved as the email sender name.
+A bare address continues to use the existing sender name, falling back to
+`Registration Watch` if none is configured.
 
 ## Installing
 
