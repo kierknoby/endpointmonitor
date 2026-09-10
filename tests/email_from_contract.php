@@ -60,6 +60,8 @@ namespace FreePBX\modules {
 	email_from_assert(resolve_email_from('asterisk@demodomain.name') === ['address' => 'asterisk@demodomain.name', 'name' => 'FreePBX'], 'bare address should use the existing brand fallback');
 	email_from_assert(resolve_email_from('<asterisk@demodomain.name>') === ['address' => 'asterisk@demodomain.name', 'name' => 'FreePBX'], 'angle-bracket address without a display name should use the existing brand fallback');
 	email_from_assert(resolve_email_from('PBX-123 <asterisk@demodomain.name>') === ['address' => 'asterisk@demodomain.name', 'name' => 'PBX-123'], 'unquoted display name should be preserved');
+	$encodedFreePbx17From = 'PBXSRV28-LON &' . 'lt;asterisk@freepbx.uk&' . 'gt;';
+	email_from_assert(resolve_email_from($encodedFreePbx17From) === ['address' => 'asterisk@freepbx.uk', 'name' => 'PBXSRV28-LON'], 'FreePBX 17 HTML-encoded angle brackets should be decoded before parsing');
 	email_from_assert(resolve_email_from('JaCoTec TK-System <pbx@mydomain.de>') === ['address' => 'pbx@mydomain.de', 'name' => 'JaCoTec TK-System'], 'display names containing spaces and hyphens should be preserved');
 	email_from_assert(resolve_email_from('  PBX-123 <asterisk@demodomain.name>  ') === ['address' => 'asterisk@demodomain.name', 'name' => 'PBX-123'], 'surrounding whitespace should be ignored');
 	email_from_assert(resolve_email_from('PBX-123 <asterisk@demodomain.name') === ['address' => '', 'name' => ''], 'malformed angle-bracket input should fail safely');
@@ -68,6 +70,8 @@ namespace FreePBX\modules {
 	email_from_assert(resolve_email_from('PBX-123 <not-an-email>') === ['address' => '', 'name' => ''], 'invalid extracted address should fail validation');
 	email_from_assert(resolve_email_from('') === ['address' => '', 'name' => ''], 'empty setting should fail safely');
 	email_from_assert(resolve_email_from("PBX-123 <asterisk@demodomain.name>\r\nBcc: attacker@example.com") === ['address' => '', 'name' => ''], 'CR/LF in the configured From value should fail safely');
+	$encodedCrLfFrom = 'PBX-123 &' . 'lt;asterisk@demodomain.name&' . 'gt;&' . '#13;&' . '#10;Bcc: attacker@example.com';
+	email_from_assert(resolve_email_from($encodedCrLfFrom) === ['address' => '', 'name' => ''], 'HTML-entity-encoded CR/LF should be decoded and rejected');
 	email_from_assert(resolve_email_from('asterisk@demodomain.name', '') === ['address' => 'asterisk@demodomain.name', 'name' => 'Registration Watch'], 'bare address should retain the Registration Watch fallback when the brand is empty');
 
 	$methodWatch = new Registrationwatch(new EmailFromMethodFreePBXStub([

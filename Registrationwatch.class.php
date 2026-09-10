@@ -4719,6 +4719,7 @@ class Registrationwatch implements \BMO {
 	}
 
 	private function parseNotificationFrom(string $value): array {
+		$value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 		$value = trim($value);
 		$invalid = ['address' => '', 'name' => ''];
 		if ($value === '' || preg_match('/[\r\n]/', $value)) {

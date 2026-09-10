@@ -628,12 +628,13 @@ fwconsole reload
 
 Released by `@kierknoby, Kieran Knowles-Byrne // FreePBX UK`.
 
-This patch fixes GitHub issue #17 by using one consistent path to retrieve,
-parse, validate, and apply Advanced Settings → Email "From:" Address for test
-emails and every alert type. Bare addresses retain the existing sender-name
-fallback, while values such as `PBX-123 <asterisk@demodomain.name>` preserve the
-explicit display name. Malformed values continue to fail safely and the
-extracted address must pass normal email-address validation.
+This patch fixes GitHub issue #17 by decoding the HTML-entity-encoded Email
+"From:" Address returned by FreePBX 17 before parsing and validation, then using
+one resolved From identity for test emails and every alert type. Bare addresses
+retain the existing sender-name fallback, while values such as
+`PBX-123 <asterisk@demodomain.name>` preserve the explicit display name.
+Malformed values continue to fail safely and the extracted address must pass
+normal email-address validation.
 
 ### 1.4.2, patch release, 3 September 2026
 
