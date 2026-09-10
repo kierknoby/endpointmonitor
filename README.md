@@ -7,7 +7,7 @@ alerts when watched registrations become unavailable or recover.
 
 **Signed Release**
 
-Registration Watch 1.4.1 is the first signed FreePBX UK release of the module. Releases are signed with the author's developer GPG key, which is signed by the FreePBX Module Signing v2 master key, allowing FreePBX to verify module authenticity and integrity.
+Registration Watch 1.4.1 was the first signed FreePBX UK release of the module. Releases are signed with the author's developer GPG key, which is signed by the FreePBX Module Signing v2 master key, allowing FreePBX to verify module authenticity and integrity.
 
 Multiple registrations under the same extension may be tracked separately where
 Registration Watch can distinguish them from Asterisk/FreePBX contact data.
@@ -631,7 +631,7 @@ Released by `@kierknoby, Kieran Knowles-Byrne // FreePBX UK`.
 This patch fixes GitHub issue #17 by using one consistent path to retrieve,
 parse, validate, and apply Advanced Settings → Email "From:" Address for test
 emails and every alert type. Bare addresses retain the existing sender-name
-fallback, while values such as `PBX-123 <asterisk@example.com>` preserve the
+fallback, while values such as `PBX-123 <asterisk@demodomain.name>` preserve the
 explicit display name. Malformed values continue to fail safely and the
 extracted address must pass normal email-address validation.
 
